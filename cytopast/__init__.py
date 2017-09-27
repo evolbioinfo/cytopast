@@ -4,9 +4,8 @@ from collections import defaultdict
 from functools import reduce
 from queue import Queue
 
-import pandas as pd
 import numpy as np
-
+import pandas as pd
 from ete3 import Tree
 
 PASTML = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'PASTML')
@@ -48,7 +47,7 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML):
     :param pastml: path to the PASTML binary
     :return: path to the annotation file produced by PASTML
     """
-    tree = Tree(tree_file, format=1)
+    tree = read_tree(tree_file)
 
     df = pd.read_csv(annotation_file, index_col=0, header=None)
 
@@ -83,10 +82,7 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML):
 def annotate_tree_with_metadata(tree_path, data_path, sep='\t'):
     df = pd.read_table(data_path, sep=sep, index_col=0, header=0)
     df.index = df.index.map(str)
-    try:
-        tree = Tree(tree_path, format=3)
-    except:
-        tree = Tree(tree_path, format=1)
+    tree = read_tree(tree_path)
 
     def get_states(name):
         row = df.loc[name, :]
@@ -100,6 +96,14 @@ def annotate_tree_with_metadata(tree_path, data_path, sep='\t'):
     return tree, sorted(df.columns)
 
 
+def read_tree(tree_path):
+    try:
+        tree = Tree(tree_path, format=3)
+    except:
+        tree = Tree(tree_path, format=1)
+    return tree
+
+
 def compress_tree(tree, categories):
     categories = set(categories)
 
@@ -107,10 +111,17 @@ def compress_tree(tree, categories):
         return set(n.features) & categories
 
     collapse_vertically(tree, get_states)
+    tip_sizes = set(getattr(l, SIZE) for l in tree.iter_leaves())
+    if len(tip_sizes) > 10:
+        tips2bin = lambda n_tips: int(np.log10(max(1, n_tips)))
+        bin2tips = lambda bin: int(np.mean(np.power(10, [bin, bin + 1])))
+    else:
+        tips2bin = lambda n_tips: n_tips
+        bin2tips = lambda bin: bin
 
     parents = [tree]
     while parents:
-        collapse_horizontally(get_states, parents=parents)
+        collapse_horizontally(get_states, parents=parents, tips2bin=tips2bin, bin2tips=bin2tips)
         parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
 
     def get_size(n):
