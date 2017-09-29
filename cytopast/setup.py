@@ -27,5 +27,5 @@ setup(
     url='https://gitlab.pasteur.fr/phylo/cytopast',
     download_url='https://gitlab.pasteur.fr/phylo/cytopast/archive/0.1.zip',
     keywords=['PASTML', 'visualisation', 'phylogeny'],
-    install_requires=['ete3', 'pandas', 'numpy', 'jinja2', 'colour', 'json']
+    install_requires=['ete3', 'pandas', 'numpy', 'jinja2', 'colour']
 )

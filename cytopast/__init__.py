@@ -111,8 +111,8 @@ def compress_tree(tree, categories):
         return set(n.features) & categories
 
     collapse_vertically(tree, get_states)
-    tip_sizes = set(getattr(l, SIZE) for l in tree.iter_leaves())
-    if len(tip_sizes) > 10:
+    tip_sizes = set(getattr(l, SIZE, 1) for l in tree.iter_leaves())
+    if max(tip_sizes) / min(tip_sizes) > 10:
         tips2bin = lambda n_tips: int(np.log10(max(1, n_tips)))
         bin2tips = lambda bin: int(np.mean(np.power(10, [bin, bin + 1])))
     else:
@@ -135,9 +135,9 @@ def compress_tree(tree, categories):
         if size < threshold_size:
             tree.remove_child(n)
 
-    szs = sorted(getattr(n, SIZE, 1) * getattr(n, EDGE_SIZE, 1) for n in tree.iter_leaves())
-    if len(szs) > 25:
-        threshold = szs[-25]
+    szs = sorted(getattr(n, SIZE, 0) * getattr(n, EDGE_SIZE, 1) for n in tree.iter_leaves())
+    if len(szs) > 20:
+        threshold = szs[-20]
         logging.info('Removing tips of size less than {}'.format(threshold))
         remove_small_tips(threshold, tree)
 
@@ -162,7 +162,7 @@ def compress_tree(tree, categories):
     for n in tree.traverse():
         n_tips = getattr(n, SIZE, 0)
         edge_size = getattr(n, EDGE_SIZE, 1)
-        size = getattr(n, SIZE, 1) * edge_size
+        size = n_tips * edge_size
         scaled_size = ((np.log10(max(n_tips, 1)) if need_log else n_tips) - min_size) / (max_size - min_size)
         n.add_feature(SIZE, 20 if n_tips == 0 else int(40 + 360 * scaled_size))
         n.add_feature(FONT_SIZE, 10 if n_tips == 0 else int(10 + 40 * scaled_size))
