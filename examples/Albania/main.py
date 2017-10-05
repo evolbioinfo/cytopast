@@ -17,7 +17,7 @@ if '__main__' == __name__:
     res_html_comp = os.path.join(DATA_DIR, 'albania_compressed.html')
 
     tree, categories = cy.annotate_tree_with_metadata(res_tree, res_annotations)
-    save_as_cytoscape_html(tree, res_html, categories, graph_name='Albania', dist_step=None)
+    save_as_cytoscape_html(tree, res_html, categories, graph_name='Albania')
     tree = cy.compress_tree(tree, categories)
     save_as_cytoscape_html(tree, res_html_comp, categories, graph_name='Albania (compressed)',
-                           dist_step=None, layout='cose')
+                           layout='cose')
