@@ -27,7 +27,7 @@ TARGET = 'target'
 SOURCE = 'source'
 
 
-def tree2json(tree, add_fake_nodes=True, categories=None):
+def tree2json(tree, add_fake_nodes=True, categories=None, name_feature=STATE):
     features_to_keep = [SIZE, 'shape', FONT_SIZE]
     if categories:
         features_to_keep += categories
@@ -37,7 +37,7 @@ def tree2json(tree, add_fake_nodes=True, categories=None):
         max_dist = max(n.dist for n in tree.traverse())
         dist_step = max_dist / 10 if max_dist < 10 or max_dist > 100 else 1
 
-    node2id = {n: str(n.name) if n.name else 'id_{}'.format(i) for i, n in enumerate(tree.traverse())}
+    node2id = {n: 'id_{}'.format(i) for i, n in enumerate(tree.traverse())}
     for id_i, n in enumerate(tree.traverse('preorder')):
         if n == tree and add_fake_nodes and int(n.dist / dist_step) > 0:
             edge_name = getattr(n, 'edge_name', '%g' % n.dist)
@@ -48,7 +48,7 @@ def tree2json(tree, add_fake_nodes=True, categories=None):
                                      SIZE: getattr(n, EDGE_SIZE, DEFAULT_EDGE_SIZE), NAME: edge_name}))
         features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
         features[ID] = node2id[n]
-        features[NAME] = str(n.state)
+        features[NAME] = str(getattr(n, name_feature, n.name))
         if not (set(features.keys()) & categories):
             features[str(n.state)] = 100
         if SIZE not in n.features:
@@ -85,7 +85,7 @@ def json2cyjs(json_dict, out_cyjs, graph_name='Tree'):
         json.dump(json_dict, fp)
 
 
-def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', layout='dagre'):
+def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', layout='dagre', name_feature=STATE):
     """
     Converts a tree to an html representation using Cytoscape.js.
 
@@ -103,7 +103,7 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
     :param tree: ete3.Tree
     :param out_html: path where to save the resulting html file.
     """
-    json_dict = tree2json(tree, add_fake_nodes=layout == 'dagre', categories=categories)
+    json_dict = tree2json(tree, add_fake_nodes=layout == 'dagre', categories=categories, name_feature=name_feature)
 
     env = Environment(loader=PackageLoader('cytopast', 'templates'))
     template = env.get_template('pie_tree.js')

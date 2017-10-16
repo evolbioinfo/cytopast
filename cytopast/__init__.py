@@ -68,9 +68,8 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML):
     n_states = len(states)
     out_dir = os.path.dirname(annotation_file)
 
-    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -c {states} -n {tips} -x 0 -m JC -s T -I T'.format(
-        dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file, tips=n_tips,
-        states=n_states)
+    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -x 0 -m JC -s T -I T'.format(
+        dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file)
     logging.info(command)
     os.system(command)
 
@@ -104,7 +103,7 @@ def read_tree(tree_path):
     return tree
 
 
-def compress_tree(tree, categories):
+def compress_tree(tree, categories, bin=True, cut=True):
     categories = set(categories)
 
     def get_states(n):
@@ -112,7 +111,7 @@ def compress_tree(tree, categories):
 
     collapse_vertically(tree, get_states)
     tip_sizes = set(getattr(l, SIZE, 1) for l in tree.iter_leaves())
-    if max(tip_sizes) / min(tip_sizes) > 10:
+    if max(tip_sizes) / min(tip_sizes) > 10 and bin:
         tips2bin = lambda n_tips: int(np.log10(max(1, n_tips)))
         bin2tips = lambda bin: int(np.mean(np.power(10, [bin, bin + 1])))
     else:
@@ -136,7 +135,7 @@ def compress_tree(tree, categories):
             tree.remove_child(n)
 
     szs = sorted(getattr(n, SIZE, 0) * getattr(n, EDGE_SIZE, 1) for n in tree.iter_leaves())
-    if len(szs) > 20:
+    if len(szs) > 20 and cut:
         threshold = szs[-20]
         logging.info('Removing tips of size less than {}'.format(threshold))
         remove_small_tips(threshold, tree)
