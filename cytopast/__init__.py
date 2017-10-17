@@ -111,7 +111,8 @@ def compress_tree(tree, categories, bin=True, cut=True):
 
     collapse_vertically(tree, get_states)
     tip_sizes = set(getattr(l, SIZE, 1) for l in tree.iter_leaves())
-    if max(tip_sizes) / min(tip_sizes) > 10 and bin:
+    merge_different_sizes = max(tip_sizes) / min(tip_sizes) > 10 and bin
+    if merge_different_sizes:
         tips2bin = lambda n_tips: int(np.log10(max(1, n_tips)))
         bin2tips = lambda bin: int(np.mean(np.power(10, [bin, bin + 1])))
     else:
@@ -128,7 +129,7 @@ def compress_tree(tree, categories, bin=True, cut=True):
 
     n2size = {n: get_size(n) for n in tree.children}
     sizes = sorted(n2size.values())
-    threshold_size = 0 if len(sizes) < 25 else sizes[-25]
+    threshold_size = 0 if len(sizes) < 10 else sizes[-10]
     logging.info('Threshold size is set to {}'.format(threshold_size))
     for n, size in n2size.items():
         if size < threshold_size:
@@ -172,7 +173,8 @@ def compress_tree(tree, categories, bin=True, cut=True):
 
         state = n.state
         is_metachild = getattr(n, METACHILD, False)
-        n.state = '{} {}{}'.format(state, '~' if is_metachild else '', n_tips) if size > min_size else ''
+        n.state = '{} {}{}'.format(state, '~' if is_metachild and merge_different_sizes else '', n_tips) \
+            if size > min_size else ''
         if hasattr(n, METACHILD):
             n.del_feature(METACHILD)
 

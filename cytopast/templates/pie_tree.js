@@ -1,4 +1,4 @@
-cytoscape({
+var cy = cytoscape({
   container: document.getElementById('cy'),
 
   style: cytoscape.stylesheet()
@@ -56,4 +56,20 @@ cytoscape({
   ready: function(){
     window.cy = this;
   }
+});
+
+cy.on('mouseover', 'node', function(event) {
+    var node = event.target;
+    if (node.data('tooltip') !== undefined) {
+        node.qtip({
+             content: node.data('tooltip'),
+             show: {
+                event: event.type,
+                ready: true
+             },
+             hide: {
+                event: 'mouseout unfocus'
+             }
+        }, event);
+    }
 });

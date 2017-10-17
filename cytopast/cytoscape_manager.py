@@ -28,11 +28,14 @@ SOURCE = 'source'
 
 
 def tree2json(tree, add_fake_nodes=True, categories=None, name_feature=STATE):
+    nodes, edges = [], []
     features_to_keep = [SIZE, 'shape', FONT_SIZE]
     if categories:
         features_to_keep += categories
+
+    sorted_categories = sorted(categories)
+
     categories = set(categories) if categories else set()
-    nodes, edges = [], []
     if add_fake_nodes:
         max_dist = max(n.dist for n in tree.traverse())
         dist_step = max_dist / 10 if max_dist < 10 or max_dist > 100 else 1
@@ -42,8 +45,8 @@ def tree2json(tree, add_fake_nodes=True, categories=None, name_feature=STATE):
         if n == tree and add_fake_nodes and int(n.dist / dist_step) > 0:
             edge_name = getattr(n, 'edge_name', '%g' % n.dist)
             source_name = 'fake_node_{}'.format(node2id[n])
-            nodes.append(get_node(**{ID: source_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
-                                     FONT_SIZE: 1}))
+            nodes.append(get_node({ID: source_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
+                                   FONT_SIZE: 1}))
             edges.append(get_edge(**{SOURCE: source_name, TARGET: node2id[n], INTERACTION: 'triangle',
                                      SIZE: getattr(n, EDGE_SIZE, DEFAULT_EDGE_SIZE), NAME: edge_name}))
         features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
@@ -57,14 +60,17 @@ def tree2json(tree, add_fake_nodes=True, categories=None, name_feature=STATE):
             features[FONT_SIZE] = 10
         if 'shape' not in n.features:
             features['shape'] = 'ellipse'
-        nodes.append(get_node(**features))
+        tooltip = ' / '.join(cat for cat in sorted_categories if cat in features)
+        if tooltip:
+            features['tooltip'] = tooltip
+        nodes.append(get_node(features))
         for child in n.children:
             source_name = node2id[n]
             edge_size = getattr(child, EDGE_SIZE, DEFAULT_EDGE_SIZE)
             edge_name = getattr(child, 'edge_name', '%g' % child.dist)
             if add_fake_nodes and int(child.dist / dist_step) > 0:
                 target_name = 'fake_node_{}'.format(node2id[child])
-                nodes.append(get_node(**{ID: target_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
+                nodes.append(get_node({ID: target_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
                                          FONT_SIZE: 1}))
                 edges.append(get_edge(**{SOURCE: source_name, TARGET: target_name, INTERACTION: 'none',
                                          SIZE: edge_size, NAME: ''}))
@@ -117,8 +123,11 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
         fp.write(page)
 
 
-def get_node(**data):
-    return {DATA: data}
+def get_node(data, position=None):
+    res = {DATA: data}
+    if position:
+        res['position'] = position
+    return res
 
 
 def get_edge(**data):
