@@ -39,7 +39,7 @@ def name_tree(tree):
     return i > 0
 
 
-def apply_pastml(annotation_file, tree_file, pastml=PASTML):
+def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None):
     """
     Applies PASTML on the given tree and annotation file.
     :param annotation_file: path to the csv state file: tip_name,state
@@ -65,8 +65,10 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML):
 
     states = df[1].unique()
     logging.info('States are {}'.format(states))
-    n_states = len(states)
-    out_dir = os.path.dirname(annotation_file)
+    n_states = len([s for s in states if not pd.isnull(s)])
+    if out_dir is None:
+        out_dir = os.path.dirname(annotation_file)
+    os.makedirs(out_dir, exist_ok=True)
 
     command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -x 0 -m JC -s T -I T'.format(
         dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file)
@@ -136,8 +138,8 @@ def compress_tree(tree, categories, bin=True, cut=True):
             tree.remove_child(n)
 
     szs = sorted(getattr(n, SIZE, 0) * getattr(n, EDGE_SIZE, 1) for n in tree.iter_leaves())
-    if len(szs) > 20 and cut:
-        threshold = szs[-20]
+    if len(szs) > 10 and cut:
+        threshold = szs[-10]
         logging.info('Removing tips of size less than {}'.format(threshold))
         remove_small_tips(threshold, tree)
 
@@ -169,7 +171,7 @@ def compress_tree(tree, categories, bin=True, cut=True):
 
         n.add_feature('edge_name', str(edge_size) if edge_size > 1 else '')
         scaled_e_size = ((np.log10(edge_size) if need_e_log else edge_size) - min_e_size) / (max_e_size - min_e_size)
-        n.add_feature(EDGE_SIZE, int(10 + 90 * scaled_e_size))
+        n.add_feature(EDGE_SIZE, int(10 * (1 + scaled_e_size)))
 
         state = n.state
         is_metachild = getattr(n, METACHILD, False)

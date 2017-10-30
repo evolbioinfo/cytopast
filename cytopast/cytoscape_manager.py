@@ -1,4 +1,5 @@
 import json
+from queue import Queue
 
 from colour import Color
 from jinja2 import Environment, PackageLoader
@@ -40,17 +41,28 @@ def tree2json(tree, add_fake_nodes=True, categories=None, name_feature=STATE):
         max_dist = max(n.dist for n in tree.traverse())
         dist_step = max_dist / 10 if max_dist < 10 or max_dist > 100 else 1
 
-    node2id = {n: 'id_{}'.format(i) for i, n in enumerate(tree.traverse())}
-    for id_i, n in enumerate(tree.traverse('preorder')):
+    node2tooltip = {n: ' / '.join(cat for cat in sorted_categories if cat in n.features) for n in tree.traverse()}
+    queue = Queue()
+    queue.put(tree, block=False)
+    node2id = {}
+    i = 0
+    while not queue.empty():
+        n = queue.get(block=False)
+        node2id[n] = i
+        i += 1    
+        for c in sorted(n.children, key=lambda c: (node2tooltip[c], str(getattr(c, name_feature, c.name)))):
+            queue.put(c, block=False)
+    
+    for n, n_id in sorted(node2id.items(), key=lambda ni: ni[1]):
         if n == tree and add_fake_nodes and int(n.dist / dist_step) > 0:
             edge_name = getattr(n, 'edge_name', '%g' % n.dist)
-            source_name = 'fake_node_{}'.format(node2id[n])
+            source_name = 'fake_node_{}'.format(n_id)
             nodes.append(get_node({ID: source_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
                                    FONT_SIZE: 1}))
-            edges.append(get_edge(**{SOURCE: source_name, TARGET: node2id[n], INTERACTION: 'triangle',
+            edges.append(get_edge(**{SOURCE: source_name, TARGET: n_id, INTERACTION: 'triangle',
                                      SIZE: getattr(n, EDGE_SIZE, DEFAULT_EDGE_SIZE), NAME: edge_name}))
         features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
-        features[ID] = node2id[n]
+        features[ID] = n_id
         features[NAME] = str(getattr(n, name_feature, n.name))
         if not (set(features.keys()) & categories):
             features[str(n.state)] = 100
@@ -60,18 +72,16 @@ def tree2json(tree, add_fake_nodes=True, categories=None, name_feature=STATE):
             features[FONT_SIZE] = 10
         if 'shape' not in n.features:
             features['shape'] = 'ellipse'
-        tooltip = ' / '.join(cat for cat in sorted_categories if cat in features)
-        if tooltip:
-            features['tooltip'] = tooltip
+        features['tooltip'] = node2tooltip[n]
         nodes.append(get_node(features))
-        for child in n.children:
-            source_name = node2id[n]
+        for child in sorted(n.children, key=lambda c: node2id[c]):
+            source_name = n_id
             edge_size = getattr(child, EDGE_SIZE, DEFAULT_EDGE_SIZE)
             edge_name = getattr(child, 'edge_name', '%g' % child.dist)
             if add_fake_nodes and int(child.dist / dist_step) > 0:
                 target_name = 'fake_node_{}'.format(node2id[child])
                 nodes.append(get_node({ID: target_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
-                                         FONT_SIZE: 1}))
+                                       FONT_SIZE: 1}))
                 edges.append(get_edge(**{SOURCE: source_name, TARGET: target_name, INTERACTION: 'none',
                                          SIZE: edge_size, NAME: ''}))
                 source_name = target_name
@@ -91,7 +101,8 @@ def json2cyjs(json_dict, out_cyjs, graph_name='Tree'):
         json.dump(json_dict, fp)
 
 
-def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', layout='dagre', name_feature=STATE):
+def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', layout='dagre', name_feature=STATE,
+                           name2colour=None, add_fake_nodes=True):
     """
     Converts a tree to an html representation using Cytoscape.js.
 
@@ -109,13 +120,15 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
     :param tree: ete3.Tree
     :param out_html: path where to save the resulting html file.
     """
-    json_dict = tree2json(tree, add_fake_nodes=layout == 'dagre', categories=categories, name_feature=name_feature)
+    json_dict = tree2json(tree, add_fake_nodes=add_fake_nodes, categories=categories, name_feature=name_feature)
 
     env = Environment(loader=PackageLoader('cytopast', 'templates'))
     template = env.get_template('pie_tree.js')
-    graph = template.render(name2colour=[(name, Color(hue=i / len(categories), saturation=.8, luminance=.5).get_hex())
-                                         for (i, name) in enumerate(categories, start=1)], elements=json_dict,
-                            layout=layout)
+    if name2colour is None:
+        name2colour = [(name, Color(hue=i / len(categories), saturation=.8, luminance=.5).get_hex())
+                       for (i, name) in enumerate(categories, start=1)]
+    name2colour = sorted(name2colour, key=lambda nk: nk[0])
+    graph = template.render(name2colour=name2colour, elements=json_dict, layout=layout)
     template = env.get_template('index.html')
     page = template.render(graph=graph, title=graph_name)
 
