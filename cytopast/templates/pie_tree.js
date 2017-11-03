@@ -9,11 +9,9 @@ var cy = cytoscape({
         'content': 'data(name)',
         'shape': 'data(shape)',
         'pie-size': '100%',
-        {% set i = 1 %}
         {% for (name, colour) in name2colour %}
-        'pie-{{i}}-background-color': "{{colour}}",
-        'pie-{{i}}-background-size': 'mapData({{name}}, 0, 100, 0, 100)',
-        {% set i = i + 1 %}
+            'pie-{{loop.index}}-background-color': "{{colour}}",
+            'pie-{{loop.index}}-background-size': 'mapData({{name}}, 0, 100, 0, 100)',
         {% endfor %}
         'text-opacity': 0.5,
         'text-valign': 'center',

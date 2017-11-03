@@ -9,6 +9,7 @@ import pandas as pd
 from ete3 import Tree
 
 PASTML = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'PASTML')
+# PASTML = 'PASTML'
 TREE_NWK_PASTML_OUTPUT = 'Result_treeIDs.{tips}.taxa.{states}.states.tre'
 STATES_TAB_PASTML_OUTPUT = 'Result_states_probs.FULL.{tips}.taxa.{states}.states.txt'
 
@@ -70,7 +71,7 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None):
         out_dir = os.path.dirname(annotation_file)
     os.makedirs(out_dir, exist_ok=True)
 
-    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -x 0 -m JC -s T -I T'.format(
+    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -m JC -I T'.format(
         dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file)
     logging.info(command)
     os.system(command)

@@ -22,7 +22,7 @@ if '__main__' == __name__:
 
     df = pd.read_csv(STATES_IN, header=0, index_col=0)
     df.index = df.index.map(lambda s: re.sub(r'\.\d*', '', s))
-    df['Location'] = df['Location'].apply(lambda s: s.replace(' ', '_'))
+    # df['Location'] = df['Location'].apply(lambda s: s.replace(' ', '_').replace('/', '_'))
     df.to_csv(STATES_OUTPUT, columns=['Location'], index=True, header=False, quoting=csv.QUOTE_ALL, quotechar='"')
     res_annotations = cytopast.apply_pastml(annotation_file=STATES_OUTPUT, tree_file=TREE_NWK)
 
@@ -31,4 +31,4 @@ if '__main__' == __name__:
     tree, categories = cytopast.annotate_tree_with_metadata(TREE_NWK, res_annotations)
     save_as_cytoscape_html(tree, res_html, categories, graph_name='Zika')
     tree = cytopast.compress_tree(tree, categories, bin=False)
-    save_as_cytoscape_html(tree, res_html_comp, categories, graph_name='Zika (compressed)', layout='cose')
+    save_as_cytoscape_html(tree, res_html_comp, categories, graph_name='Zika (compressed)', add_fake_nodes=False)
