@@ -9,7 +9,9 @@ var cy = cytoscape({
         'content': 'data(name)',
         'shape': 'data(shape)',
         'pie-size': '100%',
-        'text-opacity': 0.5,
+        'background-color': '#ffffff',
+        'color': 'black',
+        'text-opacity': 1,
         'text-valign': 'center',
         'text-halign': 'center',
         'font-size': 'data(fontsize)'
@@ -24,12 +26,13 @@ var cy = cytoscape({
       .css({
         'width': 'data(size)',
         'font-size': 'data(size)',
-        'color': '#ff9900',
+        'color': '#cccccc',
         'content': 'data(name)',
         'curve-style': 'bezier',
         'target-arrow-shape': 'data(interaction)',
         'target-arrow-color': 'data(color)',
         'opacity': 0.8,
+        'text-opacity': 1,
         'content': 'data(name)',
         'line-color': 'data(color)'
       })
@@ -39,7 +42,7 @@ var cy = cytoscape({
         'line-color': 'black',
         'target-arrow-color': 'black',
         'source-arrow-color': 'black',
-        'pie-size': '50%',
+        'pie-size': '60%',
         'opacity': 1
       })
     .selector('.faded')

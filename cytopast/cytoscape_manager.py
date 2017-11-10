@@ -65,7 +65,7 @@ def tree2json(tree, add_fake_nodes=True, name_feature=STATE,
                                      'color': DEFAULT_EDGE_COLOR}))
         features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
         features[ID] = n_id
-        features[NAME] = str(getattr(n, name_feature, n.name))
+        features[NAME] = str(getattr(n, name_feature, ''))
         if SIZE not in n.features:
             features[SIZE] = DEFAULT_SIZE
         if FONT_SIZE not in n.features:
@@ -143,7 +143,7 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
             css += """
                 'pie-{i}-background-color': "{colour}",
                 'pie-{i}-background-size': '{percent}\%',
-            """.format(i=i, percent=100 / n, colour=name2colour[cat])
+            """.format(i=i, percent=round(100 / n, 2), colour=name2colour[cat])
         clazz2css[clazz_list2css_class(clazz_list)] = css
     graph = template.render(clazz2css=clazz2css.items(), elements=json_dict, layout=layout, title=graph_name)
     template = env.get_template('index.html')

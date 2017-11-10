@@ -110,12 +110,14 @@ def read_tree(tree_path):
 def compress_tree(tree, can_merge_diff_sizes=True, cut=True):
     for n in tree.traverse():
         n.add_feature('num_tips', len(n.get_leaves()))
+        if n.is_leaf():
+            n.add_feature(SIZE, 1)
 
     def get_states(n):
         return set(getattr(n, CATEGORIES))
 
     collapse_vertically(tree, get_states)
-    tip_sizes = set(getattr(l, SIZE, 1) for l in tree.iter_leaves())
+    tip_sizes = set(getattr(l, SIZE, 0) for l in tree.iter_leaves())
     merge_different_sizes = max(tip_sizes) / min(tip_sizes) > 10 and can_merge_diff_sizes
     if merge_different_sizes:
         tips2bin = lambda n_tips: int(np.log10(max(1, n_tips)))
@@ -179,9 +181,10 @@ def compress_tree(tree, can_merge_diff_sizes=True, cut=True):
         state = n.state
         is_metachild = getattr(n, METACHILD, False)
         real_num_tips = getattr(n, 'num_tips')
-        n.state = '{} {}{}{}'.format(state, '~' if is_metachild and merge_different_sizes else '',
-                                     n_tips if n_tips else '',
-                                     ' ({})'.format(real_num_tips - n_tips) if real_num_tips > n_tips else '')
+        n.state = '{} {}{}'.format(state,
+                                   '{}{}'.format('~' if is_metachild and merge_different_sizes else '', n_tips)
+                                   if n_tips else '',
+                                   ' ({})'.format(real_num_tips - n_tips) if real_num_tips > n_tips else '')
         # if hasattr(n, METACHILD):
         #     n.del_feature(METACHILD)
 
@@ -213,14 +216,15 @@ def collapse_horizontally(get_states, parents, tips2bin=lambda n_tips: int(np.lo
             for c in children[1:]:
                 p.remove_child(c)
             child.add_feature(EDGE_SIZE, edge_size)
-            queue = Queue()
-            queue.put(child, block=False)
-            while not queue.empty():
-                child = queue.get(block=False)
-                child.add_feature(METACHILD, True)
-                child.add_feature(SIZE, int(round(np.mean([getattr(c, SIZE, 0) for c in children]))))
-                for grandchild in child.children:
-                    queue.put(grandchild, block=False)
+            child.add_feature(METACHILD, True)
+            child.add_feature(SIZE,
+                              int(round(np.mean([getattr(c, SIZE, 0) for c in children]))))
+            # queue = Queue()
+            # queue.put(child, block=False)
+            # while not queue.empty():
+            #     child = queue.get(block=False)
+            #     for grandchild in child.children:
+            #         queue.put(grandchild, block=False)
 
 
 def remove_small_tips(threshold, tree):
@@ -240,9 +244,6 @@ def collapse_vertically(tree, get_states):
     :param tree: ete3.Tree
     :return: void, modifies the input tree
     """
-
-    for l in tree.iter_leaves():
-        l.add_feature(SIZE, 1)
     queue = Queue()
     for n in tree.traverse('postorder'):
         queue.put(n, block=False)
