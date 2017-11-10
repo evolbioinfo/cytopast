@@ -14,12 +14,35 @@ body {
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 999;
+  z-index: 10;
 }
 
 h1 {
   opacity: 0.5;
   font-size: 1em;
+}
+
+.floating {
+    float: right;
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    z-index: 100;
+}
+
+.button {
+    background-color: #555555;
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2), 0 3px 10px 0 rgba(0,0,0,0.19);
 }
 </style>
 <meta charset=utf-8 />
@@ -41,6 +64,9 @@ h1 {
 </head>
 <body>
 <div id="cy"></div>
+<div class="floating">
+<a class="button" href="#" id="downloader" onclick="to_image()" download="{{title}}.png">Download (png)</a>
+</div>
 <!-- Load appplication code at the end to ensure DOM is loaded -->
 <script type="text/javascript">{{graph}}</script>
 </body>

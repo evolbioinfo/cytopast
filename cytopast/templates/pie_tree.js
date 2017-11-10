@@ -9,24 +9,29 @@ var cy = cytoscape({
         'content': 'data(name)',
         'shape': 'data(shape)',
         'pie-size': '100%',
-        {% for (name, colour) in name2colour %}
-            'pie-{{loop.index}}-background-color': "{{colour}}",
-            'pie-{{loop.index}}-background-size': 'mapData({{name}}, 0, 100, 0, 100)',
-        {% endfor %}
         'text-opacity': 0.5,
         'text-valign': 'center',
         'text-halign': 'center',
         'font-size': 'data(fontsize)'
       })
+    {% for (clazz, css) in clazz2css %}
+    .selector(".{{clazz}}")
+        .css({
+        {{css}}
+        })
+    {% endfor %}
     .selector('edge')
       .css({
         'width': 'data(size)',
         'font-size': 'data(size)',
+        'color': '#ff9900',
         'content': 'data(name)',
         'curve-style': 'bezier',
         'target-arrow-shape': 'data(interaction)',
+        'target-arrow-color': 'data(color)',
         'opacity': 0.8,
         'content': 'data(name)',
+        'line-color': 'data(color)'
       })
     .selector(':selected')
       .css({
@@ -71,3 +76,8 @@ cy.on('mouseover', 'node', function(event) {
         }, event);
     }
 });
+
+function to_image(){
+    document.getElementById("downloader").download = "{{title}}.png";
+    document.getElementById("downloader").href = cy.png({ full: true }).replace(/^data:image\/[^;]/, 'data:application/octet-stream');
+}

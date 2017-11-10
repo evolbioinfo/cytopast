@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from ete3 import Tree
 
+CATEGORIES = 'categories'
+
 PASTML = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'PASTML')
 # PASTML = 'PASTML'
 TREE_NWK_PASTML_OUTPUT = 'Result_treeIDs.{tips}.taxa.{states}.states.tre'
@@ -93,8 +95,7 @@ def annotate_tree_with_metadata(tree_path, data_path, sep='\t'):
     for n in tree.traverse():
         states = get_states(n.name)
         n.add_feature('state', str(states[0]) if len(states) == 1 else '')
-        for state in states:
-            n.add_feature(state, 100 / len(states))
+        n.add_feature(CATEGORIES, tuple(sorted(states)))
     return tree, sorted(df.columns)
 
 
@@ -106,25 +107,26 @@ def read_tree(tree_path):
     return tree
 
 
-def compress_tree(tree, categories, bin=True, cut=True):
-    categories = set(categories)
+def compress_tree(tree, can_merge_diff_sizes=True, cut=True):
+    for n in tree.traverse():
+        n.add_feature('num_tips', len(n.get_leaves()))
 
     def get_states(n):
-        return set(n.features) & categories
+        return set(getattr(n, CATEGORIES))
 
     collapse_vertically(tree, get_states)
     tip_sizes = set(getattr(l, SIZE, 1) for l in tree.iter_leaves())
-    merge_different_sizes = max(tip_sizes) / min(tip_sizes) > 10 and bin
+    merge_different_sizes = max(tip_sizes) / min(tip_sizes) > 10 and can_merge_diff_sizes
     if merge_different_sizes:
         tips2bin = lambda n_tips: int(np.log10(max(1, n_tips)))
-        bin2tips = lambda bin: int(np.mean(np.power(10, [bin, bin + 1])))
     else:
         tips2bin = lambda n_tips: n_tips
-        bin2tips = lambda bin: bin
 
+    logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
+                 .format('' if merge_different_sizes else 'not '))
     parents = [tree]
     while parents:
-        collapse_horizontally(get_states, parents=parents, tips2bin=tips2bin, bin2tips=bin2tips)
+        collapse_horizontally(get_states, parents=parents, tips2bin=tips2bin)
         parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
 
     def get_size(n):
@@ -147,7 +149,7 @@ def compress_tree(tree, categories, bin=True, cut=True):
     szs = [getattr(n, SIZE, 0) for n in tree.traverse() if getattr(n, SIZE, 0)]
     max_size = max(szs)
     min_size = min(szs)
-    need_log = max_size / min_size > 1000
+    need_log = max_size / min_size > 100
     if need_log:
         max_size = np.log10(max_size)
         min_size = np.log10(min_size)
@@ -155,7 +157,7 @@ def compress_tree(tree, categories, bin=True, cut=True):
     e_szs = [getattr(n, EDGE_SIZE, 1) for n in tree.traverse()]
     max_e_size = max(e_szs)
     min_e_size = min(e_szs)
-    need_e_log = max_e_size / min_e_size > 1000
+    need_e_log = max_e_size / min_e_size > 100
     if need_e_log:
         max_e_size = np.log10(max_e_size)
         min_e_size = np.log10(min_e_size)
@@ -165,28 +167,28 @@ def compress_tree(tree, categories, bin=True, cut=True):
     for n in tree.traverse():
         n_tips = getattr(n, SIZE, 0)
         edge_size = getattr(n, EDGE_SIZE, 1)
-        size = n_tips * edge_size
-        scaled_size = ((np.log10(max(n_tips, 1)) if need_log else n_tips) - min_size) / (max_size - min_size)
+        scaled_size = ((np.log10(max(n_tips, 1)) if need_log else n_tips) - min_size) / max(max_size - min_size, 1)
         n.add_feature(SIZE, 20 if n_tips == 0 else int(40 + 360 * scaled_size))
         n.add_feature(FONT_SIZE, 10 if n_tips == 0 else int(10 + 40 * scaled_size))
 
         n.add_feature('edge_name', str(edge_size) if edge_size > 1 else '')
-        scaled_e_size = ((np.log10(edge_size) if need_e_log else edge_size) - min_e_size) / (max_e_size - min_e_size)
+        scaled_e_size = ((np.log10(edge_size) if need_e_log else edge_size) - min_e_size) \
+                        / max(max_e_size - min_e_size, 1)
         n.add_feature(EDGE_SIZE, int(10 * (1 + scaled_e_size)))
 
         state = n.state
         is_metachild = getattr(n, METACHILD, False)
-        n.state = '{} {}{}'.format(state, '~' if is_metachild and merge_different_sizes else '', n_tips) \
-            if size > min_size else ''
-        if hasattr(n, METACHILD):
-            n.del_feature(METACHILD)
+        real_num_tips = getattr(n, 'num_tips')
+        n.state = '{} {}{}{}'.format(state, '~' if is_metachild and merge_different_sizes else '',
+                                     n_tips if n_tips else '',
+                                     ' ({})'.format(real_num_tips - n_tips) if real_num_tips > n_tips else '')
+        # if hasattr(n, METACHILD):
+        #     n.del_feature(METACHILD)
 
     return tree
 
 
-def collapse_horizontally(get_states, parents, tips2bin=lambda n_tips: int(np.log10(max(1, n_tips))),
-                          bin2tips=lambda bin: int(np.mean(np.power(10, [bin, bin + 1])))):
-
+def collapse_horizontally(get_states, parents, tips2bin=lambda n_tips: int(np.log10(max(1, n_tips)))):
     def get_sorted_states(n):
         return tuple(sorted(get_states(n))), tips2bin(getattr(n, SIZE, 0))
 
@@ -216,7 +218,7 @@ def collapse_horizontally(get_states, parents, tips2bin=lambda n_tips: int(np.lo
             while not queue.empty():
                 child = queue.get(block=False)
                 child.add_feature(METACHILD, True)
-                child.add_feature(SIZE, bin2tips(tips2bin(getattr(child, SIZE, 0))))
+                child.add_feature(SIZE, int(round(np.mean([getattr(c, SIZE, 0) for c in children]))))
                 for grandchild in child.children:
                     queue.put(grandchild, block=False)
 

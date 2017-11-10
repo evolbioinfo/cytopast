@@ -4,7 +4,11 @@ from queue import Queue
 from colour import Color
 from jinja2 import Environment, PackageLoader
 
-DEFAULT_EDGE_SIZE = 6
+from cytopast import METACHILD
+
+DEFAULT_EDGE_SIZE = 10
+DEFAULT_EDGE_COLOR = '#808080'
+SPECIAL_EDGE_COLOR = '#383838'
 
 FONT_SIZE = 'fontsize'
 
@@ -28,20 +32,17 @@ TARGET = 'target'
 SOURCE = 'source'
 
 
-def tree2json(tree, add_fake_nodes=True, categories=None, name_feature=STATE):
+def tree2json(tree, add_fake_nodes=True, name_feature=STATE,
+              categories2tooltip=lambda cats: ' or '.join(cats)):
+    clazzes = set()
     nodes, edges = [], []
     features_to_keep = [SIZE, 'shape', FONT_SIZE]
-    if categories:
-        features_to_keep += categories
 
-    sorted_categories = sorted(categories)
-
-    categories = set(categories) if categories else set()
     if add_fake_nodes:
         max_dist = max(n.dist for n in tree.traverse())
         dist_step = max_dist / 10 if max_dist < 10 or max_dist > 100 else 1
 
-    node2tooltip = {n: ' / '.join(cat for cat in sorted_categories if cat in n.features) for n in tree.traverse()}
+    node2tooltip = {n: categories2tooltip(getattr(n, 'categories', (str(n.state),))) for n in tree.traverse()}
     queue = Queue()
     queue.put(tree, block=False)
     node2id = {}
@@ -60,39 +61,43 @@ def tree2json(tree, add_fake_nodes=True, categories=None, name_feature=STATE):
             nodes.append(get_node({ID: source_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
                                    FONT_SIZE: 1}))
             edges.append(get_edge(**{SOURCE: source_name, TARGET: n_id, INTERACTION: 'triangle',
-                                     SIZE: getattr(n, EDGE_SIZE, DEFAULT_EDGE_SIZE), NAME: edge_name}))
+                                     SIZE: getattr(n, EDGE_SIZE, DEFAULT_EDGE_SIZE), NAME: edge_name,
+                                     'color': DEFAULT_EDGE_COLOR}))
         features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
         features[ID] = n_id
         features[NAME] = str(getattr(n, name_feature, n.name))
-        if not (set(features.keys()) & categories):
-            features[str(n.state)] = 100
         if SIZE not in n.features:
             features[SIZE] = DEFAULT_SIZE
         if FONT_SIZE not in n.features:
             features[FONT_SIZE] = 10
         if 'shape' not in n.features:
             features['shape'] = 'ellipse'
-        features['tooltip'] = node2tooltip[n]
-        nodes.append(get_node(features))
+        tooltip = node2tooltip[n]
+        features['tooltip'] = tooltip
+        clazz = getattr(n, 'categories', (str(n.state),))
+        if clazz:
+            clazzes.add(clazz)
+        nodes.append(get_node(features, clazz=clazz_list2css_class(clazz)))
         for child in sorted(n.children, key=lambda c: node2id[c]):
+            edge_color = SPECIAL_EDGE_COLOR if getattr(child, METACHILD, False) else DEFAULT_EDGE_COLOR
             source_name = n_id
             edge_size = getattr(child, EDGE_SIZE, DEFAULT_EDGE_SIZE)
-            edge_name = getattr(child, 'edge_name', '%g' % child.dist)
+            edge_name = getattr(child, 'edge_name', '%g' % round(child.dist, 2))
             if add_fake_nodes and int(child.dist / dist_step) > 0:
                 target_name = 'fake_node_{}'.format(node2id[child])
                 nodes.append(get_node({ID: target_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
                                        FONT_SIZE: 1}))
                 edges.append(get_edge(**{SOURCE: source_name, TARGET: target_name, INTERACTION: 'none',
-                                         SIZE: edge_size, NAME: ''}))
+                                         SIZE: edge_size, NAME: '', 'color': edge_color}))
                 source_name = target_name
             edge_data = {SOURCE: source_name, TARGET: node2id[child], INTERACTION: 'triangle',
-                         SIZE: edge_size, NAME: edge_name}
+                         SIZE: edge_size, NAME: edge_name, 'color': edge_color}
             if add_fake_nodes:
                 edge_data['minLen'] = int(child.dist / dist_step)
             edges.append(get_edge(**edge_data))
 
     json_dict = {NODES: nodes, EDGES: edges}
-    return json_dict
+    return json_dict, clazzes
 
 
 def json2cyjs(json_dict, out_cyjs, graph_name='Tree'):
@@ -102,7 +107,7 @@ def json2cyjs(json_dict, out_cyjs, graph_name='Tree'):
 
 
 def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', layout='dagre', name_feature=STATE,
-                           name2colour=None, add_fake_nodes=True):
+                           name2colour=None, add_fake_nodes=True, categories2tooltip=lambda cats: ' or '.join(cats)):
     """
     Converts a tree to an html representation using Cytoscape.js.
 
@@ -120,15 +125,27 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
     :param tree: ete3.Tree
     :param out_html: path where to save the resulting html file.
     """
-    json_dict = tree2json(tree, add_fake_nodes=add_fake_nodes, categories=categories, name_feature=name_feature)
+    json_dict, clazzes \
+        = tree2json(tree, add_fake_nodes=add_fake_nodes, name_feature=name_feature,
+                    categories2tooltip=categories2tooltip)
 
     env = Environment(loader=PackageLoader('cytopast', 'templates'))
     template = env.get_template('pie_tree.js')
     if name2colour is None:
-        name2colour = [(name, Color(hue=i / len(categories), saturation=.8, luminance=.5).get_hex())
-                       for (i, name) in enumerate(categories, start=1)]
-    name2colour = sorted(name2colour, key=lambda nk: nk[0])
-    graph = template.render(name2colour=name2colour, elements=json_dict, layout=layout)
+        name2colour = {name: Color(hue=i / len(categories), saturation=.8, luminance=.5).get_hex()
+                       for (i, name) in enumerate(categories, start=1)}
+
+    clazz2css = {}
+    for clazz_list in clazzes:
+        n = len(clazz_list)
+        css = ''
+        for i, cat in enumerate(clazz_list, start=1):
+            css += """
+                'pie-{i}-background-color': "{colour}",
+                'pie-{i}-background-size': '{percent}\%',
+            """.format(i=i, percent=100 / n, colour=name2colour[cat])
+        clazz2css[clazz_list2css_class(clazz_list)] = css
+    graph = template.render(clazz2css=clazz2css.items(), elements=json_dict, layout=layout, title=graph_name)
     template = env.get_template('index.html')
     page = template.render(graph=graph, title=graph_name)
 
@@ -136,8 +153,16 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
         fp.write(page)
 
 
-def get_node(data, position=None):
+def clazz_list2css_class(clazz_list):
+    if not clazz_list:
+        return None
+    return ''.join(c for c in '-'.join(clazz_list) if c.isalnum() or '-' == c)
+
+
+def get_node(data, position=None, clazz=None):
     res = {DATA: data}
+    if clazz:
+        res['classes'] = clazz
     if position:
         res['position'] = position
     return res

@@ -30,5 +30,5 @@ if '__main__' == __name__:
     res_html = os.path.join(DATA_DIR, 'tree.html')
     tree, categories = cytopast.annotate_tree_with_metadata(TREE_NWK, res_annotations)
     save_as_cytoscape_html(tree, res_html, categories, graph_name='Zika')
-    tree = cytopast.compress_tree(tree, categories, bin=False)
+    tree = cytopast.compress_tree(tree)
     save_as_cytoscape_html(tree, res_html_comp, categories, graph_name='Zika (compressed)', add_fake_nodes=False)
