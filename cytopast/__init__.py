@@ -73,8 +73,9 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None):
         out_dir = os.path.dirname(annotation_file)
     os.makedirs(out_dir, exist_ok=True)
 
-    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -m JC -I T'.format(
-        dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file)
+    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -m JC -I T > {log_file}'.format(
+        dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file,
+        log_file=os.path.join(out_dir, 'pastml_log.log'))
     logging.info(command)
     os.system(command)
 
