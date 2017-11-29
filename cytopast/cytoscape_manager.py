@@ -32,8 +32,8 @@ TARGET = 'target'
 SOURCE = 'source'
 
 
-def tree2json(tree, add_fake_nodes=True, name_feature=STATE,
-              categories2tooltip=lambda cats: ' or '.join(cats)):
+def tree2json(tree, categories, add_fake_nodes=True, name_feature=STATE,
+              n2tooltip=lambda n, categories: ', '.join('{}:{}'.format(cat, getattr(n, cat)) for cat in categories)):
     clazzes = set()
     nodes, edges = [], []
     features_to_keep = [SIZE, 'shape', FONT_SIZE]
@@ -42,7 +42,7 @@ def tree2json(tree, add_fake_nodes=True, name_feature=STATE,
         max_dist = max(n.dist for n in tree.traverse())
         dist_step = max_dist / 10 if max_dist < 10 or max_dist > 100 else 1
 
-    node2tooltip = {n: categories2tooltip(getattr(n, 'categories', (str(n.state),))) for n in tree.traverse()}
+    node2tooltip = {n: n2tooltip(n, categories) for n in tree.traverse()}
     queue = Queue()
     queue.put(tree, block=False)
     node2id = {}
@@ -51,7 +51,7 @@ def tree2json(tree, add_fake_nodes=True, name_feature=STATE,
         n = queue.get(block=False)
         node2id[n] = i
         i += 1    
-        for c in sorted(n.children, key=lambda c: (node2tooltip[c], str(getattr(c, name_feature, c.name)))):
+        for c in sorted(n.children, key=lambda c: (str(getattr(c, name_feature, c.name)), node2tooltip[c])):
             queue.put(c, block=False)
     
     for n, n_id in sorted(node2id.items(), key=lambda ni: ni[1]):
@@ -74,7 +74,7 @@ def tree2json(tree, add_fake_nodes=True, name_feature=STATE,
             features['shape'] = 'ellipse'
         tooltip = node2tooltip[n]
         features['tooltip'] = tooltip
-        clazz = getattr(n, 'categories', (str(n.state),))
+        clazz = tuple('{}_{}'.format(cat, getattr(n, cat)) for cat in categories)
         if clazz:
             clazzes.add(clazz)
         nodes.append(get_node(features, clazz=clazz_list2css_class(clazz)))
@@ -107,7 +107,9 @@ def json2cyjs(json_dict, out_cyjs, graph_name='Tree'):
 
 
 def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', layout='dagre', name_feature=STATE,
-                           name2colour=None, add_fake_nodes=True, categories2tooltip=lambda cats: ' or '.join(cats)):
+                           name2colour=None, add_fake_nodes=True,
+                           n2tooltip=lambda n, categories:
+                           ', '.join('{}:{}'.format(cat, getattr(n, cat)) for cat in categories)):
     """
     Converts a tree to an html representation using Cytoscape.js.
 
@@ -126,8 +128,8 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
     :param out_html: path where to save the resulting html file.
     """
     json_dict, clazzes \
-        = tree2json(tree, add_fake_nodes=add_fake_nodes, name_feature=name_feature,
-                    categories2tooltip=categories2tooltip)
+        = tree2json(tree, categories=categories, add_fake_nodes=add_fake_nodes, name_feature=name_feature,
+                    n2tooltip=n2tooltip)
 
     env = Environment(loader=PackageLoader('cytopast', 'templates'))
     template = env.get_template('pie_tree.js')

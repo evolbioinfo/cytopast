@@ -42,7 +42,7 @@ def name_tree(tree):
     return i > 0
 
 
-def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None):
+def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None, model='JC'):
     """
     Applies PASTML on the given tree and annotation file.
     :param annotation_file: path to the csv state file: tip_name,state
@@ -73,18 +73,46 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None):
         out_dir = os.path.dirname(annotation_file)
     os.makedirs(out_dir, exist_ok=True)
 
-    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -m JC -I T > {log_file}'.format(
-        dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file,
+    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -m {model} -I T > {log_file}'.format(
+        dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file, model=model,
         log_file=os.path.join(out_dir, 'pastml_log.log'))
     logging.info(command)
     os.system(command)
 
     res_data = os.path.join(out_dir, STATES_TAB_PASTML_OUTPUT).format(tips=n_tips, states=n_states)
-    pd.read_table(res_data, sep=', ', header=0, index_col=0).to_csv(res_data, sep='\t', index=True)
+    pd.read_table(res_data, sep=', ', header=0, index_col=0).astype(bool).to_csv(res_data, sep=',', index=True)
     return res_data
 
 
-def annotate_tree_with_metadata(tree_path, data_path, sep='\t'):
+def pasml_annotations2cytoscape_annotation(cat2file, output):
+    def get_states(name, cat_df):
+        row = cat_df.loc[name, :]
+        states = cat_df.columns[row]
+        return None if len(states) > 1 else states[0]
+
+    cat2df = {cat: pd.read_table(data_path, sep=',', index_col=0, header=0) for (cat, data_path) in
+              cat2file.items()}
+    df = pd.DataFrame(index=next(iter(cat2df.values())).index, columns=cat2df.keys())
+    for cat, cat_df in cat2df.items():
+        cat_df.index = cat_df.index.map(str)
+        df[cat] = df.index.map(lambda name: get_states(name, cat_df))
+
+    logging.info(df.sample(n=5))
+    df.to_csv(output, sep=',')
+
+
+def annotate_tree_with_cyto_metadata(tree_path, data_path, sep=','):
+    df = pd.read_table(data_path, sep=sep, index_col=0, header=0)
+    df.index = df.index.map(str)
+    df.fillna('', inplace=True)
+    tree = read_tree(tree_path)
+
+    for n in tree.traverse():
+        n.add_features(**df.loc[n.name, :].to_dict())
+    return tree, sorted(df.columns)
+
+
+def annotate_tree_with_metadata(tree_path, data_path, sep=','):
     df = pd.read_table(data_path, sep=sep, index_col=0, header=0)
     df.index = df.index.map(str)
     tree = read_tree(tree_path)
@@ -108,14 +136,14 @@ def read_tree(tree_path):
     return tree
 
 
-def compress_tree(tree, can_merge_diff_sizes=True, cut=True):
+def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_feature=None):
     for n in tree.traverse():
         n.add_feature('num_tips', len(n.get_leaves()))
         if n.is_leaf():
             n.add_feature(SIZE, 1)
 
     def get_states(n):
-        return set(getattr(n, CATEGORIES))
+        return set('{}:{}'.format(cat, getattr(n, cat)) for cat in categories)
 
     collapse_vertically(tree, get_states)
     tip_sizes = set(getattr(l, SIZE, 0) for l in tree.iter_leaves())
@@ -179,7 +207,7 @@ def compress_tree(tree, can_merge_diff_sizes=True, cut=True):
                         / max(max_e_size - min_e_size, 1)
         n.add_feature(EDGE_SIZE, int(10 * (1 + scaled_e_size)))
 
-        state = n.state
+        state = getattr(n, name_feature, '') if name_feature is not None else ''
         is_metachild = getattr(n, METACHILD, False)
         real_num_tips = getattr(n, 'num_tips')
         n.state = '{} {}{}'.format(state,
