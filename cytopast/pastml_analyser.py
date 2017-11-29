@@ -26,16 +26,16 @@ def random_hex_color():
 def work(args):
     tree, df, work_dir, column = args
     logging.info('Processing {}'.format(column))
-    column_string = ''.join(s for s in column if s.isalnum())
-    rep_dir = os.path.join(work_dir, column_string)
+    category = col_name2cat(column)
+    rep_dir = os.path.join(work_dir, category)
     unique_states = df.unique()
     n_tips = len(read_tree(tree).get_leaves())
     res_file = os.path.join(rep_dir, STATES_TAB_PASTML_OUTPUT).format(tips=n_tips,
                                                                       states=len(unique_states))
     if os.path.exists(res_file):
-        return column_string, res_file
+        return category, res_file
     os.makedirs(rep_dir, exist_ok=True)
-    state_file = os.path.join(rep_dir, 'state_{}.csv'.format(column_string))
+    state_file = os.path.join(rep_dir, 'state_{}.csv'.format(category))
 
     # For binary states make sure that 0 or false is not mistaken by missing data
     if len(unique_states) == 2 and np.any(pd.isnull(unique_states)):
@@ -46,7 +46,12 @@ def work(args):
         df.replace(np.nan, other_state, inplace=True)
 
     df.to_csv(state_file, index=True, header=False)
-    return column_string, apply_pastml(annotation_file=state_file, tree_file=tree)
+    return category, apply_pastml(annotation_file=state_file, tree_file=tree)
+
+
+def col_name2cat(column):
+    column_string = ''.join(s for s in column if s.isalnum())
+    return column_string
 
 
 def infer_ancestral_states(tree, data, work_dir, res_annotations):
@@ -117,9 +122,11 @@ if '__main__' == __name__:
 
     if not params.name_column and len(params.columns) == 1:
         params.name_column = params.columns[0]
-    
-    if params.for_names_only and params.name_column and len(params.columns) > 1:
-        categories.remove(params.name_column)
+
+    if params.name_column:
+        params.name_column = col_name2cat(params.name_column)
+        if params.for_names_only and len(params.columns) > 1:
+            categories.remove(params.name_column)
 
     df = pd.read_csv(res_annotations, index_col=0, header=0)
     name2colour = {}
