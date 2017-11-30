@@ -51,7 +51,8 @@ def tree2json(tree, categories, add_fake_nodes=True, name_feature=STATE,
         n = queue.get(block=False)
         node2id[n] = i
         i += 1    
-        for c in sorted(n.children, key=lambda c: (str(getattr(c, name_feature, c.name)), node2tooltip[c])):
+        for c in sorted(n.children, key=lambda c: (str(getattr(c, name_feature, c.name) if name_feature else c.name),
+                                                   node2tooltip[c])):
             queue.put(c, block=False)
     
     for n, n_id in sorted(node2id.items(), key=lambda ni: ni[1]):
@@ -65,7 +66,7 @@ def tree2json(tree, categories, add_fake_nodes=True, name_feature=STATE,
                                      'color': DEFAULT_EDGE_COLOR}))
         features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
         features[ID] = n_id
-        features[NAME] = str(getattr(n, name_feature, ''))
+        features[NAME] = str(getattr(n, name_feature, '') if name_feature else '')
         if SIZE not in n.features:
             features[SIZE] = DEFAULT_SIZE
         if FONT_SIZE not in n.features:
