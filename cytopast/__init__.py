@@ -84,7 +84,7 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None, model=
     return res_data
 
 
-def pasml_annotations2cytoscape_annotation(cat2file, output):
+def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
     def get_states(name, cat_df):
         row = cat_df.loc[name, :]
         states = cat_df.columns[row]
@@ -98,17 +98,22 @@ def pasml_annotations2cytoscape_annotation(cat2file, output):
         df[cat] = df.index.map(lambda name: get_states(name, cat_df))
 
     logging.info(df.sample(n=5))
-    df.to_csv(output, sep=',')
+    df.to_csv(output, sep=sep)
 
 
-def annotate_tree_with_cyto_metadata(tree_path, data_path, sep=','):
+def annotate_tree_with_cyto_metadata(tree_path, data_path, sep='\t', one_state=False):
     df = pd.read_table(data_path, sep=sep, index_col=0, header=0)
     df.index = df.index.map(str)
     df.fillna('', inplace=True)
     tree = read_tree(tree_path)
 
     for n in tree.traverse():
-        n.add_features(**df.loc[n.name, :].to_dict())
+        if not one_state:
+            n.add_features(**df.loc[n.name, :].to_dict())
+        else:
+            data = df.loc[n.name, :]
+            data = data[data != False]
+            n.add_features(**data.to_dict())
     return tree, sorted(df.columns)
 
 
@@ -143,7 +148,7 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
             n.add_feature(SIZE, 1)
 
     def get_states(n):
-        return set('{}:{}'.format(cat, getattr(n, cat)) for cat in categories)
+        return set('{}:{}'.format(cat, getattr(n, cat)) for cat in categories if hasattr(n, cat))
 
     collapse_vertically(tree, get_states)
     tip_sizes = set(getattr(l, SIZE, 0) for l in tree.iter_leaves())

@@ -6,6 +6,8 @@ from cytopast.cytoscape_manager import save_as_cytoscape_html
 import pandas as pd
 import numpy as np
 
+from cytopast.pastml_analyser import pastml
+
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
 TREE_NWK = os.path.join(DATA_DIR, 'Albanian.tree.152tax.tre')
 STATES_INPUT = os.path.join(DATA_DIR, 'Annotation.Albanian.5chars.txt')
@@ -16,30 +18,19 @@ if '__main__' == __name__:
     logging.basicConfig(level=logging.INFO)
 
     res_tree = TREE_NWK
-    res_annotations = cy.apply_pastml(annotation_file=STATES_INPUT, tree_file=res_tree)
-    res_html = os.path.join(DATA_DIR, 'albania.html')
-    res_html_comp = os.path.join(DATA_DIR, 'albania_compressed.html')
-
-    tree, categories = cy.annotate_tree_with_metadata(res_tree, res_annotations)
-    save_as_cytoscape_html(tree, res_html, categories, graph_name='Albania')
-    tree = cy.compress_tree(tree)
-    save_as_cytoscape_html(tree, res_html_comp, categories, graph_name='Albania (compressed)', add_fake_nodes=False)
+    pastml(data=STATES_INPUT, tree=res_tree, html_compressed=os.path.join(DATA_DIR, 'albania_compressed.html'),
+           html=os.path.join(DATA_DIR, 'albania.html'), data_sep=',', work_dir=DATA_DIR)
 
     for percent in (5, 10, 25):
-        df = pd.read_csv(STATES_INPUT, index_col=0, header=None)
+        df = pd.read_csv(STATES_INPUT, index_col=0, header=0)
         random_index = df.sample(frac=percent / 100).index
-        new_values = np.random.choice(df[1].unique(), size=len(random_index))
-        df.loc[random_index, 1] = new_values
+        new_values = np.random.choice(df['Country'].unique(), size=len(random_index))
+        df.loc[random_index, 'Country'] = new_values
         randomized_state_file = STATES_INPUT_PERCENT.format(percent)
-        df.to_csv(randomized_state_file, header=False, index=True)
+        df.to_csv(randomized_state_file, header=True, index=True)
 
-        res_annotations = cy.apply_pastml(annotation_file=randomized_state_file, tree_file=res_tree)
-        res_html = os.path.join(DATA_DIR, 'albania_randomized_{}_percent.html'.format(percent))
-        res_html_comp = os.path.join(DATA_DIR, 'albania_compressed_randomized_{}_percent.html'.format(percent))
-
-        tree, categories = cy.annotate_tree_with_metadata(res_tree, res_annotations)
-        save_as_cytoscape_html(tree, res_html, categories, graph_name='Albania {} precent'.format(percent))
-        tree = cy.compress_tree(tree)
-        save_as_cytoscape_html(tree, res_html_comp, categories,
-                               graph_name='Albania (compressed) {} precent'.format(percent), add_fake_nodes=False)
+        pastml(data=randomized_state_file, tree=res_tree,
+               html_compressed=os.path.join(DATA_DIR, 'albania_compressed_{}.html'.format(percent)),
+               html=os.path.join(DATA_DIR, 'albania_{}.html'.format(percent)), data_sep=',',
+               work_dir=os.path.join(DATA_DIR, '{}'.format(percent)))
 

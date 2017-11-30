@@ -74,7 +74,7 @@ def tree2json(tree, categories, add_fake_nodes=True, name_feature=STATE,
             features['shape'] = 'ellipse'
         tooltip = node2tooltip[n]
         features['tooltip'] = tooltip
-        clazz = tuple('{}_{}'.format(cat, getattr(n, cat)) for cat in categories)
+        clazz = tuple('{}_{}'.format(cat, getattr(n, cat)) for cat in categories if hasattr(n, cat))
         if clazz:
             clazzes.add(clazz)
         nodes.append(get_node(features, clazz=clazz_list2css_class(clazz)))
@@ -109,7 +109,7 @@ def json2cyjs(json_dict, out_cyjs, graph_name='Tree'):
 def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', layout='dagre', name_feature=STATE,
                            name2colour=None, add_fake_nodes=True,
                            n2tooltip=lambda n, categories:
-                           ', '.join('{}:{}'.format(cat, getattr(n, cat)) for cat in categories)):
+                           ', '.join('{}:{}'.format(cat, getattr(n, cat)) for cat in categories if hasattr(n, cat))):
     """
     Converts a tree to an html representation using Cytoscape.js.
 
