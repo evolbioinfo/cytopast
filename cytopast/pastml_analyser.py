@@ -88,7 +88,8 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
         infer_ancestral_states(tree=tree, work_dir=work_dir,
                                res_annotations=res_annotations, data=df[columns], sep=data_sep)
 
-    tree, categories = annotate_tree_with_cyto_metadata(tree, res_annotations, sep=data_sep, one_state=len(columns)==1)
+    tree, categories = annotate_tree_with_cyto_metadata(tree, res_annotations, sep=data_sep,
+                                                        one_state=len(columns) == 1)
 
     if not name_column and len(columns) == 1:
         name_column = columns[0]
@@ -109,7 +110,7 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
             if len(colours) < num_unique_values:
                 for _ in range(len(colours), num_unique_values):
                     colours.append(random_hex_color())
-            colours = colours[::int(len(COLOURS) / num_unique_values)]
+            colours = colours[:num_unique_values]
             for value, col in zip(sorted(unique_values), colours):
                 name2colour['{}_{}'.format(cat, value)] = col
             # let ambiguous values be white

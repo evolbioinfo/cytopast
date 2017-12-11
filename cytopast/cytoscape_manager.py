@@ -1,7 +1,5 @@
 import json
 from queue import Queue
-
-from colour import Color
 from jinja2 import Environment, PackageLoader
 
 from cytopast import METACHILD
@@ -134,9 +132,6 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
 
     env = Environment(loader=PackageLoader('cytopast', 'templates'))
     template = env.get_template('pie_tree.js')
-    if name2colour is None:
-        name2colour = {name: Color(hue=i / len(categories), saturation=.8, luminance=.5).get_hex()
-                       for (i, name) in enumerate(categories, start=1)}
 
     clazz2css = {}
     for clazz_list in clazzes:
