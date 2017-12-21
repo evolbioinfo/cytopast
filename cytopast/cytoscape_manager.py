@@ -1,5 +1,7 @@
 import json
 from queue import Queue
+
+import os
 from jinja2 import Environment, PackageLoader
 
 from cytopast import METACHILD
@@ -147,6 +149,7 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
     template = env.get_template('index.html')
     page = template.render(graph=graph, title=graph_name)
 
+    os.makedirs(os.path.dirname(out_html), exist_ok=True)
     with open(out_html, 'w+') as fp:
         fp.write(page)
 
