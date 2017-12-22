@@ -9,7 +9,7 @@ var cy = cytoscape({
         'content': 'data(name)',
         'shape': 'data(shape)',
         'pie-size': '100%',
-        'background-color': '#ffffff',
+        'background-color': '#808080',
         'color': 'black',
         'text-opacity': 1,
         'text-valign': 'center',

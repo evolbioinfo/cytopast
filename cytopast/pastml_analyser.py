@@ -116,6 +116,7 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
     tree = new_tree
 
     # if not os.path.isfile(res_annotations):
+
     infer_ancestral_states(tree=tree, work_dir=work_dir,
                            res_annotations=res_annotations, data=df[columns], sep=data_sep)
 

@@ -201,8 +201,9 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
     tip_sizes = [getattr(n, MAX_NUM_TIPS_INSIDE, 0) for n in tree.traverse() if getattr(n, MAX_NUM_TIPS_INSIDE, 0)]
     max_size = max(tip_sizes)
     min_size = min(tip_sizes)
-    logging.info('Max vertical cluster size is {}, min is {}'.format(max_size, min_size))
     need_log = max_size / min_size > 100
+    logging.info('Max vertical cluster size is {}, min is {}: {}need log'.format(max_size, min_size,
+                                                                                 '' if need_log else 'do not '))
     if need_log:
         max_size = np.log10(max_size)
         min_size = np.log10(min_size)
@@ -236,9 +237,9 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
                                         else min_n_tips_below)
                                     if max_n_tips_below > 0 else '')
 
-        scaled_size = ((np.log10(max(max_n_tips, 1)) if need_log else max_n_tips) - min_size) / max(max_size - min_size, 1)
-        n.add_feature(SIZE, 20 if max_n_tips == 0 else int(40 + 360 * scaled_size))
-        n.add_feature(FONT_SIZE, 10 if max_n_tips == 0 else int(10 + 40 * scaled_size))
+        scaled_size = np.power(1 + (np.log10(max(max_n_tips, 1)) if need_log else max_n_tips) - min_size, 1 / 2)
+        n.add_feature(SIZE, 20 if max_n_tips == 0 else int(50 * scaled_size))
+        n.add_feature(FONT_SIZE, 10 if max_n_tips == 0 else int(10 * scaled_size))
 
         n.add_feature('edge_name', str(edge_size) if edge_size > 1 else '')
         scaled_e_size = ((np.log10(edge_size) if need_e_log else edge_size) - min_e_size) / max(max_e_size - min_e_size, 1)

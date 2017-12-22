@@ -4,7 +4,15 @@ from queue import Queue
 import os
 from jinja2 import Environment, PackageLoader
 
-from cytopast import METACHILD
+from cytopast import METACHILD, MAX_NUM_TIPS_INSIDE
+
+FAKE_NODE_SHAPE = 'rectangle'
+
+MERGED_NODE_SHAPE = 'ellipse'
+
+INNER_NODE_SHAPE = 'rectangle'
+
+TIP_SHAPE = 'ellipse'
 
 DEFAULT_EDGE_SIZE = 10
 DEFAULT_EDGE_COLOR = '#808080'
@@ -59,7 +67,7 @@ def tree2json(tree, categories, add_fake_nodes=True, name_feature=STATE,
         if n == tree and add_fake_nodes and int(n.dist / dist_step) > 0:
             edge_name = getattr(n, 'edge_name', '%g' % n.dist)
             source_name = 'fake_node_{}'.format(n_id)
-            nodes.append(get_node({ID: source_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
+            nodes.append(get_node({ID: source_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': FAKE_NODE_SHAPE,
                                    FONT_SIZE: 1}))
             edges.append(get_edge(**{SOURCE: source_name, TARGET: n_id, INTERACTION: 'triangle',
                                      SIZE: getattr(n, EDGE_SIZE, DEFAULT_EDGE_SIZE), NAME: edge_name,
@@ -72,7 +80,8 @@ def tree2json(tree, categories, add_fake_nodes=True, name_feature=STATE,
         if FONT_SIZE not in n.features:
             features[FONT_SIZE] = 10
         if 'shape' not in n.features:
-            features['shape'] = 'ellipse'
+            features['shape'] = TIP_SHAPE if n.is_leaf() and getattr(n, MAX_NUM_TIPS_INSIDE, 1) == 1\
+                else INNER_NODE_SHAPE if getattr(n, MAX_NUM_TIPS_INSIDE, 0) == 0 else MERGED_NODE_SHAPE
         tooltip = node2tooltip[n]
         features['tooltip'] = tooltip
         clazz = tuple('{}_{}'.format(cat, getattr(n, cat)) for cat in categories if hasattr(n, cat))
@@ -86,7 +95,7 @@ def tree2json(tree, categories, add_fake_nodes=True, name_feature=STATE,
             edge_name = getattr(child, 'edge_name', '%g' % round(child.dist, 2))
             if add_fake_nodes and int(child.dist / dist_step) > 0:
                 target_name = 'fake_node_{}'.format(node2id[child])
-                nodes.append(get_node({ID: target_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': 'rectangle',
+                nodes.append(get_node({ID: target_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': FAKE_NODE_SHAPE,
                                        FONT_SIZE: 1}))
                 edges.append(get_edge(**{SOURCE: source_name, TARGET: target_name, INTERACTION: 'none',
                                          SIZE: edge_size, NAME: '', 'color': edge_color}))
