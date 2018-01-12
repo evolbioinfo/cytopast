@@ -1,0 +1,745 @@
+import os
+
+# To run locally:
+# snakemake --keep-going --cores 4
+
+configfile: "config.yaml"
+localrules: all, tnt
+ruleorder: pastml_drm_loc > pastml_drm > pastml_loc > root > collapse_support > date > collapse_len
+
+folder = os.path.abspath(config["folder"])
+data_dir = os.path.join(config["folder"], config['data_dir'])
+src_command = config['src']
+py_config = config['py_config']
+cytopast_path = '%s/%s' % (folder, config['cytopast'])
+fasta_in = os.path.join(data_dir, config['fasta'])
+fa = os.path.join(data_dir, 'sequences_renamed.fasta')
+pastml = os.path.abspath(config['pastml'])
+
+n = 5
+
+rule all:
+    input:
+        expand(os.path.join(data_dir, 'maps', '{model}', 'fast_map_{n}__Continent.html'), n=range(n), model=['JC']),
+        expand(os.path.join(data_dir, 'maps', '{model}', 'fast_map_{n}__5_top_SDRMS_Continent.html'), n=range(n), model=['JC']),
+        expand(os.path.join(data_dir, 'maps', '{model}', 'fast_map_{n}__5_top_SDRMS.html'), n=range(n), model=['JC']),
+
+rule drm_data:
+    '''
+    Extract information about DRMs from Stanford DB (with sierra) and reformat it into a table.
+    '''
+    input:
+        fasta = fasta_in,
+    output:
+        gql = temp(os.path.join(data_dir, 'sierra.gql')),
+        json = temp(os.path.join(data_dir, 'pol.json')),
+        tab = os.path.join(data_dir, 'drm_data.tab')
+    params:
+        mem = 2000,
+        name = 'sierra',
+    threads: 1
+    run:
+        shell("""
+            {src_command}
+
+            echo '''inputSequence {{
+    header
+}},
+subtypeText,
+alignedGeneSequences {{
+    gene {{ name }},
+    SDRMs:mutations(filterOptions:[SDRM]) {{
+        text
+    }}
+}}''' > {output.gql}
+
+            sierrapy fasta {input.fasta} -o {output.json} -q {output.gql}
+        """)
+
+        import os
+        import pandas
+        from functools import reduce
+
+        ALIGNED_GENE_SEQ_COL = 'alignedGeneSequences'
+        INPUT_SEQUENCE_COL = 'inputSequence'
+        SDRMS_COL = 'SDRMs'
+        GENE_COL = 'gene'
+
+        df = pandas.read_json(output.json)
+        df[INPUT_SEQUENCE_COL] = df[INPUT_SEQUENCE_COL].apply(lambda d: d['header'])
+        df.set_index(keys=INPUT_SEQUENCE_COL, drop=True, inplace=True)
+
+        # split a list of genes inside the alignedGeneSequences column into several rows
+        # then split the dictionaries inside s rows into several columns
+        gene_df = df[ALIGNED_GENE_SEQ_COL].apply(pandas.Series, 1).stack().apply(pandas.Series)
+        gene_df[GENE_COL] = gene_df[GENE_COL].apply(lambda d: d['name']).astype('category', ordered=True)
+        gene_df[SDRMS_COL] = gene_df[SDRMS_COL].apply(lambda l: [d['text'] for d in l])
+        gene_df.index = gene_df.index.droplevel(-1)
+
+        # Put all the DRMs together and make them columns
+        gene_df[SDRMS_COL] = \
+            gene_df.apply(lambda row: {'%s:%s' % (row[GENE_COL], m): True for m in row[SDRMS_COL]}, axis=1)
+
+        def join_dicts(ds):
+            return reduce(lambda d1, d2: {**d1 , **d2}, ds, {})
+
+        gene_df = gene_df.groupby(gene_df.index)[SDRMS_COL].apply(list).apply(join_dicts).apply(pandas.Series)
+
+        lbls_to_drop = [ALIGNED_GENE_SEQ_COL]
+        df.drop(labels=lbls_to_drop, axis=1).join(gene_df).to_csv(output.tab, sep='\t')
+
+rule metadata:
+    '''
+    Reformat the information about DRMs extracted from Stanford DB (with sierra) together with other metadata.
+    '''
+    input:
+        metadata = os.path.join(data_dir, config['metadata']),
+        drm_tab = os.path.join(data_dir, 'drm_data.tab')
+    output:
+        data = os.path.join(data_dir, 'data.tab')
+    params:
+        mem = 2000,
+        name = 'metadata'
+    threads: 1
+    run:
+        import logging
+        import numpy as np
+        import pandas as pd
+
+        DATE = 'Year'
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S",
+                            filename=None)
+
+        # Read and fix metadata
+        seq_df = pd.read_table(input.metadata, index_col=0, header=0)
+        seq_df[DATE] = pd.to_datetime(seq_df[DATE].apply(lambda s: '%g' % s), yearfirst=True, format="%Y")
+        logging.info(seq_df.head())
+
+        # Read and fix DRM metadata
+        drm_df = pd.read_table(input.drm_tab, index_col=0)
+        drm_df['subtypeText'] = drm_df['subtypeText'].map(lambda s: s[0])
+        logging.info(drm_df.head())
+
+        # Combine them
+        seq_df.index.name = drm_df.index.name
+        df = seq_df.join(drm_df, how='outer')
+        df['long_name'] = df.index
+        df.index = np.arange(start=0, stop=len(df), step=1)
+
+        logging.info(df.describe(include='all'))
+        df.to_csv(output.data, sep='\t', header=True, index=True, index_label='id')
+
+rule rename_fasta:
+    '''
+    Renames fasta files according to the metadata ids.
+    '''
+    input:
+        fasta = fasta_in,
+        metadata = os.path.join(data_dir, 'data.tab')
+    output:
+        fasta = fa
+    params:
+        mem = 2000,
+        name = 'fa_rename',
+        old_name_col = 'long_name'
+    threads: 1
+    run:
+        import logging
+        import pandas as pd
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+        from Bio.Seq import Seq
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S",
+                            filename=None)
+        # Read the metadata
+        df = pd.read_table(input.metadata, index_col=0, header=0)
+
+        name_converter = {v: k for (k, v) in df[params.old_name_col].to_dict().items()}
+        sequences = SeqIO.parse(input.fasta, "fasta", alphabet=generic_dna)
+        sequences = \
+            [SeqIO.SeqRecord(id=str(name_converter[seq.id]), description=seq.id,
+                             seq=Seq(str(seq.seq).replace('_', '-'))) for seq in sequences if seq.id in name_converter]
+        count = SeqIO.write(sequences, output.fasta, "fasta")
+        logging.info("Converted %d records to fasta" % count)
+
+rule extract_dates:
+    '''
+    Reformat metadata into date file readable by LSD.
+    '''
+    input:
+        tab = os.path.join(data_dir, 'data.tab')
+    output:
+        tab = os.path.join(data_dir, 'dates.tab')
+    params:
+        mem = 1000,
+        name = 'dates',
+        date_col = 'Year',
+        c_root = 'l(1800)',
+        constraint_year = False,
+        c_tip = 'b(1983,2011)'
+    threads: 1
+    run:
+        import logging
+        import pandas as pd
+
+        def _get_date(d):
+            if pd.notnull(d):
+                if params.constraint_year and d.day == d.month == 1:
+                    return 'b({from_year},{to_year})'.format(from_year=d.year, to_year=d.year + 1)
+
+                first_jan_this_year = pd.datetime(year=d.year, month=1, day=1)
+                day_of_this_year = d - first_jan_this_year
+                first_jan_next_year = pd.datetime(year=d.year + 1, month=1, day=1)
+                days_in_this_year = first_jan_next_year - first_jan_this_year
+                return d.year + day_of_this_year / days_in_this_year
+            else:
+                return params.c_tip
+
+        date_df = pd.read_table(input.tab, index_col=0)[[params.date_col]]
+        date_df[params.date_col] = pd.to_datetime(date_df[params.date_col]).map(_get_date)
+        date_df.index = date_df.index.map(lambda it: str(it))
+        logging.info('Constraining the root to {}'.format(params.c_root))
+        date_df.loc['root'] = [params.c_root]
+        with open(output.tab, 'w+') as f:
+            f.write('%d\n' % date_df.shape[0])
+        logging.info('Extracted dates:\n%s' % (date_df.sample(n=5)))
+        date_df.to_csv(output.tab, sep='\t', header=False, mode='a')
+
+rule clean_alignment:
+    '''
+    Removes the positions of DRMs from the alignment, in order not to influence the evolutionary history by drug
+    selective pressure.
+    '''
+    input:
+        fasta = fa,
+        data = os.path.join(data_dir, 'data.tab')
+    output:
+        fasta = os.path.join(data_dir, 'aln_sequences.fasta')
+    params:
+        mem = 1000,
+        name = 'clean',
+        PR_start_pos = 0,
+        RT_start_pos = 97,
+    threads: 1
+    run:
+        import logging
+        import re
+        import pandas as pd
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+        from Bio.Seq import Seq
+
+        def clean_sequences(sequences, pos):
+            for sequence in sequences:
+                seq = str(sequence.seq)
+                res = []
+                end = 0
+                for start in pos:
+                    res += seq[end: (start - 1) * 3]
+                    end = start * 3
+                res += seq[end:]
+                sequence.seq = Seq(''.join(res), generic_dna)
+                yield sequence
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S",
+                            filename=None)
+        DRMS = list(pd.read_table(input.data, index_col=0).columns)
+        pos = sorted(params.PR_start_pos + int(re.findall('\d+', _)[0]) for _ in DRMS if 'PR:' in _) \
+              + sorted(params.RT_start_pos + int(re.findall('\d+', _)[0]) for _ in DRMS if 'RT:' in _)
+
+        count = SeqIO.write(clean_sequences(SeqIO.parse(input.fasta, "fasta", alphabet=generic_dna), pos),
+                            output.fasta, "fasta")
+        logging.info("Converted %d records to fasta" % count)
+
+rule get_seq_ids:
+    '''
+    Extract sequence ids of interest.
+    '''
+    input:
+        data = os.path.join(data_dir, 'data.tab')
+    output:
+        data = os.path.join(data_dir, 'ids_{subtype}.txt')
+    params:
+        mem = 500,
+        name = 'ids_{subtype}',
+        col_value = '{subtype}',
+        col_name = 'subtypeText',
+        sample = 0
+    threads: 1
+    run:
+        import logging
+        import pandas as pd
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        df = pd.read_table(input.data, index_col=0)
+        df = df[df[params.col_name] == params.col_value]
+        logging.info('Extracted %d ids matching the specified criteria' % len(df))
+        if params.sample and params.sample > 0:
+            df = df.sample(n=params.sample)
+            logging.info('Sampled %d ids' % len(df))
+        with open(output.data, 'w+') as f:
+            f.write('\n'.join(list(df.index.map(str))))
+
+rule convert_alignment:
+    '''
+    Filter and convert a fasta alignment to another format.
+    '''
+    input:
+        fasta = '{bf}aln{af}.fasta'
+    output:
+        alignment = '{bf}aln{af}.{format}'
+    params:
+        mem = 1000,
+        name = 'aln_{format}',
+        format = '{format}'
+    threads: 1
+    run:
+        import logging
+        from collections import Counter
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        sequences = list(SeqIO.parse(input.fasta, "fasta", alphabet=generic_dna))
+        common_len = Counter(len(seq.seq) for seq in sequences).most_common(n=1)[0][0]
+        bad_sequences = [(seq.id, len(seq.seq)) for seq in sequences if len(seq.seq) != common_len]
+        if bad_sequences:
+            logging.error('Sequences {} have bad length'.format(bad_sequences))
+            sequences = [seq for seq in sequences if len(seq.seq) == common_len]
+        if params.format == 'tnt':
+            with open(output.alignment, 'w+') as tnt:
+                tnt.write("xread\n'Sequences'\n")
+                tnt.write('%d %d\n' % (len(sequences[0].seq), len(sequences)))
+                for seq in sequences:
+                    tnt.write('%s %s\n' % (seq.id, seq.seq))
+                tnt.write(';\n')
+            count = len(sequences)
+        else:
+            count = SeqIO.write(sequences, output.alignment, params.format)
+        logging.info("Converted {} records to {}".format(count, params.format))
+
+rule tnt:
+    '''
+    Generates most parsimonious trees with TNT.
+    The tnt script is based on the explanations from here:
+    http://phylobotanist.blogspot.fr/2015/03/parsimony-analysis-in-tnt-using-command.html
+    '''
+    input:
+        os.path.join(data_dir, 'aln_sequences.tnt')
+    output:
+        os.path.join(data_dir, 'pars_trees.nex'),
+    params:
+        mem = 1000,
+        name = 'tnt',
+        tnt = config['tnt'],
+        num_trees = n,
+        dir_name = data_dir,
+        file_name = 'pars_trees.nex'
+    resources: tnt=1
+    threads: 4
+    run:
+        # for some reason TNT does not process a full path to the result tree file correctly
+        # so we need to cd to its dir and use the local path instead
+
+        shell("""
+            {src_command}
+
+            cd {params.dir_name}
+
+            echo '''mxram 1024;
+nstates DNA;
+nstates NOGAPS;
+procedure {input};
+log {output}.log;
+hold {params.num_trees};
+mult;
+bbreak=tbr;
+taxname=;
+export - {params.file_name};
+quit
+
+''' > {output}.run
+            {params.tnt} procedure {output}.run
+            rm {output}.run
+            rm {output}.log
+        """)
+
+rule nex2nwk:
+    '''
+    Converts trees from a nexus file to multiple newick files.
+    '''
+    input:
+        trees = os.path.join(data_dir, 'pars_trees.nex')
+    output:
+        expand(os.path.join(data_dir, '{n}', 'pars_tree.nwk'), n=range(n)),
+        log = os.path.join(data_dir, 'pars_trees.log')
+    threads:
+        1
+    params:
+        mem = 1000,
+        tree_pattern = os.path.join(data_dir, '%s', 'pars_tree.nwk'),
+        name = 'nex2nwk',
+    run:
+
+        import logging
+        import os
+        from Bio.Phylo import NexusIO, write
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        i = 0
+        for tree in NexusIO.parse(input.trees):
+            os.makedirs(os.path.dirname(params.tree_pattern % i), exist_ok=True)
+            write([tree], params.tree_pattern % i, 'newick', plain=True)
+            i += 1
+        with open(output.log, 'w+') as f:
+            f.write('Converted %d trees to newick' % i)
+
+rule fasttree:
+    '''
+    Given a layout, reconstructs a tree in quick and dirty way.
+    '''
+    input:
+        aln = os.path.join(data_dir, 'aln_sequences.phylip'),
+        tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
+    output:
+        os.path.join(data_dir, '{n}', 'fast_tree.nwk')
+    threads: 6
+    params:
+        mem = 8000,
+        name='fastt_{n}',
+        fasttree = config['fasttree']
+    run:
+        shell("""
+            {src_command}
+            {params.fasttree} -gamma -nt -gtr -cat 6 -intree {input.tree} < {input.aln} > {output}
+        """)
+
+rule phyml:
+    '''
+    Given a group of tips that are close together reconstructs the subtrees for them.
+    '''
+    input:
+        aln = os.path.join(data_dir, 'aln_sequences.phylip'),
+        tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
+    output:
+        tree = os.path.join(data_dir, '{n}', 'phyml_tree.nwk'),
+        log = os.path.join(data_dir, '{n}', 'phyml_tree.log')
+    threads:
+        1
+    params:
+        mem = 4000,
+        name = 'ph_{n}',
+        phyml = config['phyml'],
+        aln = os.path.join(data_dir, '{n}', 'aln_sequences_{n}.phylip')
+    run:
+        shell("""
+            {src_command}
+            cp {input.aln} {params.aln}
+            {params.phyml} -i {params.aln} -d nt -m GTR -o tlr -f e -t e -c 6 -a e -s RAND -u {input.tree}
+            mv {params.aln}_phyml_tree* {output.tree}
+            mv {params.aln}_phyml_stats* {output.log}
+            rm {params.aln}
+        """)
+
+rule root:
+    '''
+    Root a tree using an outgroup.
+    '''
+    input:
+        tree = os.path.join('{path}', '{tree}.nwk'),
+        ids = [os.path.join(data_dir, 'ids_C.txt')]
+    output:
+        tree = os.path.join('{path}', 'rooted_{tree}_{outgroup}.nwk')
+    threads: 1
+    params:
+        mem = 500,
+        name='root',
+        keep_outgroup='{outgroup}',
+        is_outgroup=False
+    run:
+        import logging
+        import pandas as pd
+        from ete3 import Tree
+        from ete3.parser.newick import write_newick
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S",
+                            filename=None)
+
+        def root_tree(tr, out_ids=None, in_ids=None, keep_outgroup=False):
+            leaf_names = {l.name for l in tr.iter_leaves()}
+            if out_ids:
+                out_ids &= leaf_names
+                in_ids = leaf_names - out_ids
+            elif in_ids:
+                in_ids &= leaf_names
+                out_ids = leaf_names - in_ids
+            else:
+                raise ValueError('Either ingroup or outgroup ids must be specified!')
+            n_out = len(out_ids)
+            n_in = len(in_ids)
+            logging.info('Trying to set {} elements as outgroup'.format(len(out_ids)))
+            inverse = False
+            if len(out_ids) == 1:
+                outgroup_id = out_ids.pop()
+                ancestor = next(l for l in tr.iter_leaves() if l.name == outgroup_id)
+            else:
+                ancestor = tr.get_common_ancestor(*out_ids)
+                o_clu_len = len(ancestor.get_leaves())
+                if o_clu_len != n_out:
+                    inverse = True
+                    ancestor = tr.get_common_ancestor(*in_ids)
+                    i_clu_len = len(ancestor.get_leaves())
+                    if i_clu_len != n_in:
+                        raise ValueError('The outgroup is incorporated inside the tree: '
+                                         '%d outgroup sequences cluster inside a %d-leaf subtree, ' % (n_out, o_clu_len)
+                                         + 'while %d sequences of interest cluster inside a %d-leaf subtree' % (n_in, i_clu_len))
+            logging.info('%s:\n%s' % (('Our tree' if inverse else 'Ancestor'), ancestor.get_ascii()))
+            tr.set_outgroup(ancestor)
+            left, right = tr.children
+            if ancestor not in tr.children:
+                raise ValueError('The rerooting did not work out!!!')
+            if keep_outgroup:
+                logging.info('Keeping the outgroup')
+                return tr
+            if inverse:
+                tr = ancestor
+            else:
+                tr = left if right == ancestor else right
+            tr.dist = 0
+            tr.up = None
+            logging.info('The rooted tree contains %d leaves instead of %d' % (len(tr.get_leaves()), n_in + n_out))
+
+            # If the root contains many children it will be considered as not rooted, so add a fake one if needed
+            children = list(tr.children)
+            if len(children) > 2:
+                fake_child = tr.add_child(dist=0)
+                for child in children[1:]:
+                    tr.remove_child(child)
+                    fake_child.add_child(child)
+            return tr
+
+        fmt = 2
+        try:
+            tr = Tree(input.tree, format=fmt)
+        except:
+            fmt = 1
+            tr = Tree(input.tree)
+
+        for group in input.ids:
+            ids = set(pd.read_table(group, index_col=0, header=None).index.map(str))
+            out_ids, in_ids = None, None
+            if params.is_outgroup:
+                out_ids = ids
+            else:
+                in_ids = ids
+            tr = root_tree(tr, out_ids=out_ids, in_ids=in_ids, keep_outgroup=params.keep_outgroup == 'outgroup')
+
+        nwk = write_newick(tr, format_root_node=True, format=fmt)
+        with open(output.tree, 'w+') as f:
+            f.write('%s\n' % nwk)
+
+rule collapse_support:
+    '''
+    Collapses low supported branches.
+    '''
+    input:
+        tree = os.path.join('{path}', '{tree}.nwk'),
+    output:
+        tree = os.path.join('{path}', 'collapsed_{tree}.nwk'),
+    threads: 1
+    params:
+        mem = 500,
+        name='collapse',
+        support_threshold=0.5
+    run:
+        import logging
+        from ete3 import Tree
+        from ete3.parser.newick import write_newick
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        tr = Tree(input.tree, format=2)
+        num_collapsed = 0
+        for n in list(tr.traverse('postorder')):
+            if not n.is_leaf() and not n.is_root() and n.support < params.support_threshold:
+                for child in list(n.children):
+                    n.remove_child(child)
+                    n.up.add_child(child)
+                n.up.remove_child(n)
+                num_collapsed += 1
+        logging.info('Collapsed {} branches'.format(num_collapsed))
+        nwk = write_newick(tr, format_root_node=True, format=1)
+        with open(output.tree, 'w+') as f:
+            f.write('%s\n' % nwk)
+
+rule collapse_len:
+    '''
+    Collapses branches of length 0.
+    '''
+    input:
+        tree = os.path.join('{path}', '{tree}.nwk'),
+    output:
+        tree = os.path.join('{path}', 'collen_{tree}.nwk'),
+    threads: 1
+    params:
+        mem = 500,
+        name='collen',
+        len_threshold=0
+    run:
+        import logging
+        from ete3 import Tree
+        from ete3.parser.newick import write_newick
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        tr = Tree(input.tree)
+        num_collapsed = 0
+        for n in list(tr.traverse('postorder')):
+            if not n.is_leaf() and not n.is_root() and n.dist <= params.len_threshold:
+                for child in list(n.children):
+                    n.remove_child(child)
+                    n.up.add_child(child)
+                n.up.remove_child(n)
+                num_collapsed += 1
+        logging.info('Collapsed {} branches'.format(num_collapsed))
+        nwk = write_newick(tr, format_root_node=True, format=1)
+        with open(output.tree, 'w+') as f:
+            f.write('%s\n' % nwk)
+
+rule date:
+    '''
+    Date a tree.
+    '''
+    input:
+        tree = os.path.join('{path}', '{tree}.nwk'),
+        dates = os.path.join(data_dir, 'dates.tab')
+    output:
+        os.path.join('{path}', 'dated_{tree}.nwk'),
+    threads:
+        1
+    params:
+        mem = 2000,
+        name = 'date',
+        lsd = config['lsd']
+    run:
+        shell("""
+            {src_command}
+            {params.lsd} -i {input.tree} -d {input.dates} -v 1 -c
+            mv {input.tree}.result.date.newick {output}
+        """)
+
+rule top_drms:
+    '''
+    Selects n most common SDRMs.
+    '''
+    input:
+        data = os.path.join(data_dir, 'data.tab')
+    output:
+        top_drm_file = os.path.join(data_dir, 'top_{n}_SDRMS.tab')
+    threads:
+        1
+    params:
+        mem = 1000,
+        name = 'top_{n}',
+        num_mutations = '{n}'
+    run:
+        import logging
+        import pandas as pd
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        df = pd.read_table(input.data)
+        top_mutations = sorted([col for col in df.columns if 'RT:' in col or 'PR:' in col],
+                               key=lambda drm: len(df[df[drm].isnull()]))[:int(params.num_mutations)]
+        with open(output.top_drm_file, 'w+') as f:
+            f.write(' '.join("'{}'".format(drm) for drm in top_mutations))
+
+
+rule pastml_drm_loc:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'rooted_dated_collapsed_rooted_{type}_tree_outgroup_ingroup.nwk'),
+        data = os.path.join(data_dir, 'data.tab'),
+        top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
+    output:
+        map = os.path.join(data_dir, 'maps', '{model}', '{type}_map_{n}__{m}_top_SDRMS_{loc}.html')
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        dir = os.path.join(data_dir, 'pastml', '{n}'),
+        loc = '{loc}',
+        model = '{model}'
+    run:
+        with open(input.top_drm_file, 'r') as f:
+            columns=f.read()
+
+        shell("""
+            {py_config}
+
+            python3 {cytopast_path}/cytopast/pastml_analyser.py --tree {input.tree} --data {input.data} \
+            --html_compressed {output.map} --data_sep '\t' --id_index 0 --model '{params.model}'\
+            --work_dir {params.dir} --columns {columns} {params.loc} --name_column {params.loc} --pastml_exe {pastml}
+        """)
+
+rule pastml_drm:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'rooted_dated_collapsed_rooted_{type}_tree_outgroup_ingroup.nwk'),
+        data = os.path.join(data_dir, 'data.tab'),
+        top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
+    output:
+        map = os.path.join(data_dir, 'maps', '{model}', '{type}_map_{n}__{m}_top_SDRMS.html')
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        dir = os.path.join(data_dir, 'pastml', '{n}'),
+        model = '{model}'
+    run:
+        with open(input.top_drm_file, 'r') as f:
+            columns=f.read()
+
+        shell("""
+            {py_config}
+
+            python3 {cytopast_path}/cytopast/pastml_analyser.py --tree {input.tree} --data {input.data} \
+            --html_compressed {output.map} --data_sep '\t' --id_index 0 --model '{params.model}'\
+            --work_dir {params.dir} --columns {columns} --pastml_exe {pastml}
+        """)
+
+rule pastml_loc:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'rooted_dated_collapsed_rooted_{type}_tree_outgroup_ingroup.nwk'),
+        data = os.path.join(data_dir, 'data.tab'),
+    output:
+        map = os.path.join(data_dir, 'maps', '{model}', '{type}_map_{n}__{loc}.html')
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        dir = os.path.join(data_dir, 'pastml', '{n}'),
+        loc = '{loc}',
+        model = '{model}'
+    run:
+        shell("""
+            {py_config}
+
+            python3 {cytopast_path}/cytopast/pastml_analyser.py --tree {input.tree} --data {input.data} \
+            --html_compressed '{output.map}' --data_sep '\t' --id_index 0 --model '{params.model}'\
+            --work_dir {params.dir} --columns '{params.loc}' --name_column '{params.loc}' --pastml_exe {pastml}
+        """)

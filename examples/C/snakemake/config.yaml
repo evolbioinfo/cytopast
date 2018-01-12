@@ -1,0 +1,16 @@
+folder: ".."
+data_dir: 'data'
+fasta: 'HIV-1C.fasta'
+metadata: 'HIV-1C.tab'
+tree: "HIV-1C.tree"
+
+cytopast: "../../../cytopast/"
+
+src: ""
+py_config: "PYTHONPATH=../../..; export PYTHONPATH"
+
+lsd: lsd
+fasttree: fasttree
+phyml: phyml
+tnt: tnt
+pastml: "../../../PASTML"

@@ -68,10 +68,12 @@ def apply_pastml(annotation_file, tree_file, pastml, out_dir=None, model='JC'):
     n_states = len([s for s in states if not pd.isnull(s)])
     if out_dir is None:
         out_dir = os.path.dirname(annotation_file)
+    out_dir = os.path.abspath(out_dir)
     os.makedirs(out_dir, exist_ok=True)
 
     command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -m {model} -I T > {log_file}'.format(
-        dir=out_dir, pastml=pastml, annotation_file=annotation_file, tree_file=tree_file, model=model,
+        dir=out_dir, pastml=pastml, annotation_file=os.path.abspath(annotation_file),
+        tree_file=os.path.abspath(tree_file), model=model,
         log_file=os.path.join(out_dir, 'pastml_log.log'))
     logging.info(command)
     os.system(command)
