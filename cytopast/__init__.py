@@ -10,8 +10,6 @@ from ete3 import Tree
 
 CATEGORIES = 'categories'
 
-PASTML = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'PASTML')
-# PASTML = 'PASTML'
 TREE_NWK_PASTML_OUTPUT = 'Result_treeIDs.{tips}.taxa.{states}.states.tre'
 STATES_TAB_PASTML_OUTPUT = 'Result_states_probs.FULL.{tips}.taxa.{states}.states.txt'
 
@@ -48,7 +46,7 @@ def name_tree(tree):
     return i > 0
 
 
-def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None, model='JC'):
+def apply_pastml(annotation_file, tree_file, pastml, out_dir=None, model='JC'):
     """
     Applies PASTML on the given tree and annotation file.
     :param annotation_file: path to the csv state file: tip_name,state
@@ -62,14 +60,6 @@ def apply_pastml(annotation_file, tree_file, pastml=PASTML, out_dir=None, model=
     df = pd.read_csv(annotation_file, index_col=0, header=None)
 
     names = df.index.astype(np.str)
-    # nodes = [n for n in tree.iter_leaves() if n.name in names]
-    # n_tips = len(nodes)
-    # need_to_prune = len(tree.get_leaves()) > n_tips
-    # if need_to_prune:
-    #     logging.info('Pruning...')
-    #     tree.prune(nodes, preserve_branch_length=True)
-    # if need_to_prune or name_tree(tree):
-    #     tree.write(outfile=tree_file, format=3, format_root_node=True)
     df = df[np.in1d(names, [n.name for n in tree.iter_leaves()])]
     df.to_csv(annotation_file, header=False, index=True)
 
@@ -151,6 +141,10 @@ def read_tree(tree_path):
     return tree
 
 
+def get_states(n, categories):
+    return ['{}:{}'.format(cat, getattr(n, cat)) for cat in categories if hasattr(n, cat)]
+
+
 def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_feature=None):
     for n in tree.traverse():
         if n.is_leaf():
@@ -161,11 +155,8 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
             n.add_feature(MIN_NUM_TIPS_BELOW, num_tips)
             n.add_feature(MAX_NUM_TIPS_BELOW, num_tips)
 
-    def get_states(n):
-        return set('{}:{}'.format(cat, getattr(n, cat)) for cat in categories if hasattr(n, cat))
-
-    collapse_vertically(tree, get_states)
-    remove_mediators(tree, get_states)
+    collapse_vertically(tree, lambda _: get_states(_, categories))
+    remove_mediators(tree, lambda _: get_states(_, categories))
 
     tip_sizes = set(getattr(l, MAX_NUM_TIPS_INSIDE, 0) for l in tree.iter_leaves())
     merge_different_sizes = len(tip_sizes) > 10 and can_merge_diff_sizes
@@ -178,7 +169,7 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
                  .format('' if merge_different_sizes else 'not '))
     parents = [tree]
     while parents:
-        collapse_horizontally(get_states, parents=parents, tips2bin=tips2bin)
+        collapse_horizontally(lambda _: get_states(_, categories), parents=parents, tips2bin=tips2bin)
         parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
 
     if cut:
@@ -189,14 +180,13 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
             remove_small_tips(tree,
                               to_be_removed=lambda _: getattr(_, MAX_NUM_TIPS_INSIDE, 0)
                                                       * getattr(_, EDGE_SIZE, 1) <= threshold)
+        remove_mediators(tree, lambda _: get_states(_, categories))
     logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
                  .format('' if merge_different_sizes else 'not '))
     parents = [tree]
     while parents:
-        collapse_horizontally(get_states, parents=parents, tips2bin=tips2bin)
+        collapse_horizontally(lambda _: get_states(_, categories), parents=parents, tips2bin=tips2bin)
         parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
-        
-    remove_mediators(tree, get_states)
 
     tip_sizes = [getattr(n, MAX_NUM_TIPS_INSIDE, 0) for n in tree.traverse() if getattr(n, MAX_NUM_TIPS_INSIDE, 0)]
     max_size = max(tip_sizes)
@@ -204,19 +194,21 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
     need_log = max_size / min_size > 100
     logging.info('Max vertical cluster size is {}, min is {}: {}need log'.format(max_size, min_size,
                                                                                  '' if need_log else 'do not '))
-    if need_log:
-        max_size = np.log10(max_size)
-        min_size = np.log10(min_size)
 
     e_szs = [getattr(n, EDGE_SIZE, 1) for n in tree.traverse()]
     max_e_size = max(e_szs)
     min_e_size = min(e_szs)
     logging.info('Max horizontal cluster size is {}, min is {}'.format(max_e_size, min_e_size))
     need_e_log = max_e_size / min_e_size > 100
-    if need_e_log:
-        max_e_size = np.log10(max_e_size)
-        min_e_size = np.log10(min_e_size)
 
+    transform_size = lambda _: np.power(np.log10(_ + 9) if need_log else _, 1 / 2)
+    transform_e_size = lambda _: np.log10(_) if need_e_log else _
+    size_scaling = get_scaling_function(y_m=30, y_M=30 * min(8, int(max_size / min_size)),
+                                        x_m=transform_size(min_size), x_M=transform_size(max_size))
+    font_scaling = get_scaling_function(y_m=10, y_M=10 * min(3, int(max_size / min_size)),
+                                        x_m=transform_size(min_size), x_M=transform_size(max_size))
+    e_size_scaling = get_scaling_function(y_m=5, y_M=5 * min(5, int(max_e_size / min_e_size)),
+                                          x_m=transform_e_size(min_e_size), x_M=transform_e_size(max_e_size))
     for n in tree.traverse():
         state = getattr(n, name_feature, '') if name_feature is not None else ''
 
@@ -237,15 +229,22 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
                                         else min_n_tips_below)
                                     if max_n_tips_below > 0 else '')
 
-        scaled_size = np.power(1 + (np.log10(max(max_n_tips, 1)) if need_log else max_n_tips) - min_size, 1 / 2)
-        n.add_feature(SIZE, 20 if max_n_tips == 0 else int(50 * scaled_size))
-        n.add_feature(FONT_SIZE, 10 if max_n_tips == 0 else int(10 * scaled_size))
+        n.add_feature(SIZE, 20 if max_n_tips == 0 else size_scaling(transform_size(max_n_tips)))
+        n.add_feature(FONT_SIZE, 10 if max_n_tips == 0 else font_scaling(transform_size(max_n_tips)))
 
         n.add_feature('edge_name', str(edge_size) if edge_size > 1 else '')
-        scaled_e_size = ((np.log10(edge_size) if need_e_log else edge_size) - min_e_size) / max(max_e_size - min_e_size, 1)
-        n.add_feature(EDGE_SIZE, int(10 * (1 + scaled_e_size)))
+        n.add_feature(EDGE_SIZE, e_size_scaling(transform_e_size(edge_size)))
 
     return tree
+
+
+def get_scaling_function(y_m, y_M, x_m, x_M):
+    # calculate a linear function y = k x + b, where y \in [m, M]
+    if x_M <= x_m:
+        return lambda _: y_m
+    k = (y_M - y_m) / (x_M - x_m)
+    b = y_m - k * x_m
+    return lambda _: int(k * _ + b)
 
 
 def collapse_horizontally(get_states, parents, tips2bin=lambda _: _):
@@ -347,7 +346,7 @@ def remove_mediators(tree, get_states):
             continue
         parent_states = get_states(parent)
         child = n.children[0]
-        if states == parent_states | get_states(child):
+        if states == set(parent_states) | set(get_states(child)):
             old_max_tips = getattr(parent, MAX_NUM_TIPS_INSIDE, 0)
             old_min_tips = getattr(parent, MIN_NUM_TIPS_INSIDE, 0)
 

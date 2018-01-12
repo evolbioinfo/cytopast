@@ -31,15 +31,19 @@ WHITE = '#ffffff'
 
 
 def random_hex_color():
+    """
+    Generates and returns a random HEX colour.
+    :return: str, HEX colour
+    """
     r = lambda: random.randint(100, 255)
     return '#%02X%02X%02X' % (r(), r(), r())
 
 
-def work(args):
-    tree, df, work_dir, column = args
+def _work(args):
+    tree, df, work_dir, column, pastml_exe, model = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
-    rep_dir = os.path.join(work_dir, category)
+    rep_dir = os.path.join(work_dir, category, model)
     unique_states = df.unique()
     n_tips = len(Tree(tree, 3).get_leaves())
     res_file = os.path.join(rep_dir, STATES_TAB_PASTML_OUTPUT).format(tips=n_tips,
@@ -58,18 +62,37 @@ def work(args):
         df.replace(np.nan, other_state, inplace=True)
 
     df.to_csv(state_file, index=True, header=False)
-    return category, apply_pastml(annotation_file=state_file, tree_file=tree)
+    return category, apply_pastml(annotation_file=state_file, tree_file=tree, pastml=pastml_exe, model=model)
 
 
 def col_name2cat(column):
+    """
+    Reformats the column string to make sure it contains only numerical or letter characters.
+    :param column: str, column name to be reformatted
+    :return: str, the column name with illegal characters removed
+    """
     column_string = ''.join(s for s in column if s.isalnum())
     return column_string
 
 
-def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t'):
+def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t', pastml_exe='PASTML', model='JC'):
+    """
+    Applies PASTML as many times as there are categories (columns) in the data,
+    infers ancestor states and reformats them into an output tab/csv file.
+    :param model: str (optional, default is 'JC'), model to be used by PASTML.
+    :param pastml_exe: str (default is 'PASTML'), path to the PASTML executable.
+    :param tree: str, path to the tree in newick format.
+    :param data: pandas.DataFrame containing tree tip names as indices and categories as columns.
+    :param work_dir: str, path to the working dir where PASTML can place its temporary files.
+    :param res_annotations: str, path to the file where the output table will be created.
+    :param sep: char (optional, by default '\t'), the column separator for the output table.
+    By default is set to tab, i.e. for tab file. Set it to ',' for csv.
+    :return: void
+    """
     with ThreadPool() as pool:
         col2annotation_files = \
-            pool.map(func=work, iterable=((tree, data[column], work_dir, column) for column in data.columns))
+            pool.map(func=_work, iterable=((tree, data[column], work_dir, column, pastml_exe, model)
+                                           for column in data.columns))
     logging.info('Combining the data from different columns...')
     col2annotation_files = dict(col2annotation_files)
     pasml_annotations2cytoscape_annotation(col2annotation_files, res_annotations, sep=sep)
@@ -84,7 +107,31 @@ def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t'):
 
 
 def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, columns=None, name_column=None,
-           for_names_only=False, work_dir=None, all=False):
+           for_names_only=False, work_dir=None, all=False, pastml_exe='PASTML', model='JC'):
+    """
+    Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
+    :param tree: str, path to the input tree in newick format.
+    :param data: str, path to the annotation file in tab/csv format with the first row containing the column names.
+    :param html_compressed: str, path where the output summary map visualisation file (html) will be created.
+    :param html: str (optional), path where the output tree visualisation file (html) will be created.
+    :param data_sep: char (optional, by default '\t'), the column separator for the data table.
+    By default is set to tab, i.e. for tab file. Set it to ',' if your file is csv.
+    :param id_index: int (optional, by default is 0) the index of the column in the data table that contains the tree tip names,
+    indices start from zero.
+    :param columns: array of str (optional), names of the data table columns that contain states to be analysed with PASTML,
+    if not specified all columns will be considered.
+    :param name_column: str (optional), name of the data table column to be used for node names in the visualisation
+    (must be one of those specified in columns, if columns are specified). If the data table contains only one column,
+    it will be used by default.
+    :param for_names_only: bool (optional, by default is False) If is set to True, and we are to analyse multiple states
+    (specified in columns),and the name_column is specified,
+    then the name_column won't be assigned a coloured section on the nodes, but will only be shown as node names.
+    :param work_dir: str (optional), path to the working dir for PASTML (if not specified a temporary dir will be created).
+    :param all: bool (optional, by default is False), if to keep all the nodes in the map, even the minor ones.
+    :param model: str (optional, default is 'JC'), model to be used by PASTML.
+    :param pastml_exe: str (default is 'PASTML'), path to the PASTML executable.
+    :return: void
+    """
     using_temp_dir = False
 
     if not work_dir:
@@ -99,7 +146,7 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
         columns = df.columns
 
     res_annotations = \
-        os.path.join(work_dir, 'combined_annotations_{}.tab'.format('_'.join(columns)))
+        os.path.join(work_dir, 'combined_annotations_{}_{}.tab'.format('_'.join(columns), model))
 
     new_tree = os.path.join(work_dir, os.path.basename(tree) + '.pastml.nwk')
     if not os.path.exists(new_tree):
@@ -115,20 +162,19 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
         root.write(outfile=new_tree, format=3, format_root_node=True)
     tree = new_tree
 
-    # if not os.path.isfile(res_annotations):
-
     infer_ancestral_states(tree=tree, work_dir=work_dir,
-                           res_annotations=res_annotations, data=df[columns], sep=data_sep)
+                           res_annotations=res_annotations, data=df[columns], sep=data_sep,
+                           pastml_exe=pastml_exe, model=model)
 
-    tree, categories = annotate_tree_with_cyto_metadata(tree, res_annotations, sep=data_sep,
-                                                        one_state=len(columns) == 1)
+    one_column = len(columns) == 1
+    tree, categories = annotate_tree_with_cyto_metadata(tree, res_annotations, sep=data_sep, one_state=one_column)
 
-    if not name_column and len(columns) == 1:
+    if not name_column and one_column:
         name_column = columns[0]
 
     if name_column:
         name_column = col_name2cat(name_column)
-        if for_names_only or len(columns) == 1:
+        if for_names_only or one_column:
             categories.remove(name_column)
 
     df = pd.read_table(res_annotations, index_col=0, header=0, sep=data_sep)
@@ -148,17 +194,18 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
         for cat, col in zip(categories, colours):
             name2colour['{}_{}'.format(cat, True)] = col
 
-    if len(columns) == 1:
+    if one_column:
         n2tooltip = lambda n, categories: ', '.join('{}'.format(cat) for cat in categories
                                                     if hasattr(n, cat) and bool(getattr(n, cat, False)))
     else:
         n2tooltip = lambda n, categories: \
-            ', '.join('{}:{}'.format(cat, getattr(n, cat)) for cat in categories if hasattr(n, cat))
+            ', '.join('{}:{}'.format(cat, getattr(n, cat)) for cat in categories
+                      if hasattr(n, cat) and bool(getattr(n, cat, False)))
 
     if html:
         save_as_cytoscape_html(tree, html, categories=categories, graph_name='Tree', name2colour=name2colour,
                                name_feature=name_column, n2tooltip=n2tooltip)
-    tree = compress_tree(tree, categories=(categories + [name_column]) if name_column else categories,
+    tree = compress_tree(tree, categories=([name_column] + categories) if name_column and not one_column else categories,
                          name_feature=name_column, cut=not all)
     save_as_cytoscape_html(tree, html_compressed, categories, graph_name='Summary map',
                            name2colour=name2colour, add_fake_nodes=False, n2tooltip=n2tooltip)
@@ -168,6 +215,11 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
 
 
 def get_enough_colours(num_unique_values):
+    """
+    Generates and returns an array of `num_unique_values` HEX colours.
+    :param num_unique_values: int, number of colours to be generated.
+    :return: array of str, containing colours in HEX format.
+    """
     if num_unique_values <= 12:
         colours = NUM2COLOURS[num_unique_values]
     else:
@@ -203,14 +255,18 @@ if '__main__' == __name__:
                              "if not specified all columns will be considered.",
                         type=str)
     parser.add_argument('--name_column', type=str, default=None,
-                        help="name of the data table column that should be used for node names in the visualisation"
-                             "(should be one of those specified in columns, if columns are specified)."
+                        help="name of the data table column to be used for node names in the visualisation"
+                             "(must be one of those specified in columns, if columns are specified)."
                              "If the data table contains only one column it will be used by default.")
     parser.add_argument('--for_names_only', action='store_true', 
-                        help="If specified, and if we are to analyse multiple state (specified in columns),"
+                        help="If specified, and if we are to analyse multiple states (specified in columns),"
                              "and the name_column is specified,"
                              "then the name_column won't be assigned a coloured section on the nodes, "
                              "but will only be shown as node names.")
+    parser.add_argument('--pastml_exe', required=False, default='PASTML', type=str,
+                        help="path to the PASTML executable.")
+    parser.add_argument('--model', required=False, default='JC', type=str,
+                        help="the model to be used by PASTML (can be JC or F81).")
     parser.add_argument('--work_dir', required=False, default=None, type=str,
                         help="the working dir for PASTML (if not specified a temporary dir will be created).")
     parser.add_argument('--all', action='store_true', help="Keep all the nodes in the map, even the minor ones.")
