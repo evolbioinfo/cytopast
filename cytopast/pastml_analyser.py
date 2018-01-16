@@ -160,12 +160,39 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
             root.prune(nodes, preserve_branch_length=True)
         name_tree(root)
         root.write(outfile=new_tree, format=3, format_root_node=True)
-    tree = new_tree
+    else:
+        root = read_tree(new_tree)
 
-    infer_ancestral_states(tree=tree, work_dir=work_dir,
+    infer_ancestral_states(tree=new_tree, work_dir=work_dir,
                            res_annotations=res_annotations, data=df[columns], sep=data_sep,
                            pastml_exe=pastml_exe, model=model)
 
+    past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep, columns=columns, name_column=name_column,
+             for_names_only=for_names_only, all=all)
+
+    if using_temp_dir:
+        shutil.rmtree(work_dir)
+
+
+def past_vis(tree, res_annotations, html_compressed, html=None, data_sep='\t', columns=None, name_column=None,
+             for_names_only=False, all=False):
+    """
+    Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
+    :param tree: ete3.Tree, the tree of interest.
+    :param html_compressed: str, path where the output summary map visualisation file (html) will be created.
+    :param html: str (optional), path where the output tree visualisation file (html) will be created.
+    :param data_sep: char (optional, by default '\t'), the column separator for the annotation table.
+    By default is set to tab, i.e. for tab file. Set it to ',' if your file is csv.
+    :param columns: array of str, names of the data table columns that contain states to be analysed with PASTML.
+    :param name_column: str (optional), name of the data table column to be used for node names in the visualisation
+    (must be one of those specified in columns, if columns are specified). If columns contain only one column,
+    it will be used by default.
+    :param for_names_only: bool (optional, by default is False) If is set to True, and we are to analyse multiple states
+    (specified in columns),and the name_column is specified,
+    then the name_column won't be assigned a coloured section on the nodes, but will only be shown as node names.
+    :param all: bool (optional, by default is False), if to keep all the nodes in the map, even the minor ones.
+    :return: void
+    """
     one_column = len(columns) == 1
     tree, categories = annotate_tree_with_cyto_metadata(tree, res_annotations, sep=data_sep, one_state=one_column)
 
@@ -205,13 +232,11 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
     if html:
         save_as_cytoscape_html(tree, html, categories=categories, graph_name='Tree', name2colour=name2colour,
                                name_feature=name_column, n2tooltip=n2tooltip)
-    tree = compress_tree(tree, categories=([name_column] + categories) if name_column and not one_column else categories,
+    tree = compress_tree(tree,
+                         categories=([name_column] + categories) if name_column and not one_column else categories,
                          name_feature=name_column, cut=not all)
     save_as_cytoscape_html(tree, html_compressed, categories, graph_name='Summary map',
                            name2colour=name2colour, add_fake_nodes=False, n2tooltip=n2tooltip)
-
-    if using_temp_dir:
-        shutil.rmtree(work_dir)
 
 
 def get_enough_colours(num_unique_values):

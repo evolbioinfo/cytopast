@@ -6,7 +6,7 @@ from queue import Queue
 
 import numpy as np
 import pandas as pd
-from ete3 import Tree
+from ete3 import Tree, TreeNode
 
 CATEGORIES = 'categories'
 
@@ -100,11 +100,11 @@ def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
     df.to_csv(output, sep=sep)
 
 
-def annotate_tree_with_cyto_metadata(tree_path, data_path, sep='\t', one_state=False):
+def annotate_tree_with_cyto_metadata(tree, data_path, sep='\t', one_state=False):
     df = pd.read_table(data_path, sep=sep, index_col=0, header=0)
     df.index = df.index.map(str)
     df.fillna('', inplace=True)
-    tree = read_tree(tree_path)
+    tree = read_tree(tree) if not isinstance(tree, TreeNode) else tree
 
     for n in tree.traverse():
         if not one_state:
