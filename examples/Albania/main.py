@@ -1,11 +1,6 @@
 import logging
 import os
 
-import cytopast as cy
-from cytopast.cytoscape_manager import save_as_cytoscape_html
-import pandas as pd
-import numpy as np
-
 from cytopast.pastml_analyser import pastml
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
