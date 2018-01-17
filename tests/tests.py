@@ -56,11 +56,11 @@ def visualise(tree, res_data, html_compressed, html=None):
                                                 if hasattr(n, cat) and bool(getattr(n, cat, False)))
 
     if html:
-        save_as_cytoscape_html(tree, html, categories=categories, graph_name='Tree', name2colour=name2colour,
+        save_as_cytoscape_html(tree, html, categories=categories, name2colour=name2colour,
                                name_feature=name_column, n2tooltip=n2tooltip)
     tree = compress_tree(tree, categories=(categories + [name_column]) if name_column else categories,
                          name_feature=name_column)
-    save_as_cytoscape_html(tree, html_compressed, categories, graph_name='Summary map',
+    save_as_cytoscape_html(tree, html_compressed, categories,
                            name2colour=name2colour, add_fake_nodes=False, n2tooltip=n2tooltip)
 
 

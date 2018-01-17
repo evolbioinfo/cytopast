@@ -20,9 +20,9 @@ n = 5
 
 rule all:
     input:
-        expand(os.path.join(data_dir, 'maps', '{model}', 'fast_map_{n}__Continent.html'), n=range(n), model=['JC']),
-        expand(os.path.join(data_dir, 'maps', '{model}', 'fast_map_{n}__5_top_SDRMS_Continent.html'), n=range(n), model=['JC']),
-        expand(os.path.join(data_dir, 'maps', '{model}', 'fast_map_{n}__5_top_SDRMS.html'), n=range(n), model=['JC']),
+        expand(os.path.join(data_dir, 'maps', '{model}', 'phyml_map_{n}__Continent.html'), n=range(n), model=['JC']),
+#        expand(os.path.join(data_dir, 'maps', '{model}', 'fast_map_{n}__5_top_SDRMS_Continent.html'), n=range(n), model=['JC']),
+#        expand(os.path.join(data_dir, 'maps', '{model}', 'fast_map_{n}__5_top_SDRMS.html'), n=range(n), model=['JC']),
 
 rule drm_data:
     '''
@@ -427,7 +427,7 @@ rule phyml:
         tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
     output:
         tree = os.path.join(data_dir, '{n}', 'phyml_tree.nwk'),
-        log = os.path.join(data_dir, '{n}', 'phyml_tree.log')
+        log = temp(os.path.join(data_dir, '{n}', 'phyml_tree.log'))
     threads:
         1
     params:
@@ -732,7 +732,7 @@ rule pastml_loc:
     params:
         mem = 4000,
         name = 'pastml_{n}',
-        dir = os.path.join(data_dir, 'pastml', '{n}'),
+        dir = os.path.join(data_dir, 'pastml', '{n}', '{type}'),
         loc = '{loc}',
         model = '{model}'
     run:

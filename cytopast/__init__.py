@@ -139,7 +139,10 @@ def read_tree(tree_path):
         try:
             tree = Tree(tree_path, format=1)
         except:
-            tree = Tree(tree_path, format=0)
+            try:
+                tree = Tree(tree_path, format=2)
+            except:
+                tree = Tree(tree_path, format=0)
     return tree
 
 

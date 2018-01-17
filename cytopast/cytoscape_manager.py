@@ -114,7 +114,7 @@ def json2cyjs(json_dict, out_cyjs, graph_name='Tree'):
         json.dump(json_dict, fp)
 
 
-def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', layout='dagre', name_feature=STATE,
+def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feature=STATE,
                            name2colour=None, add_fake_nodes=True,
                            n2tooltip=lambda n, categories: ', '.join(get_states(n, categories)),
                            sort_key=lambda n, name_feature, node2tooltip:
@@ -143,6 +143,8 @@ def save_as_cytoscape_html(tree, out_html, categories, graph_name='Untitled', la
     :param tree: ete3.Tree
     :param out_html: path where to save the resulting html file.
     """
+    graph_name = os.path.splitext(os.path.basename(out_html))[0]
+
     json_dict, clazzes \
         = _tree2json(tree, categories=categories, add_fake_nodes=add_fake_nodes, name_feature=name_feature,
                      n2tooltip=n2tooltip, sort_key=sort_key)
