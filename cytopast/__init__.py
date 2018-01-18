@@ -84,10 +84,11 @@ def apply_pastml(annotation_file, tree_file, pastml, out_dir=None, model='JC'):
 
 
 def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
+
     def get_states(name, cat_df):
         row = cat_df.loc[name, :]
         states = cat_df.columns[row]
-        return None if len(states) > 1 else states[0]
+        return None if len(states) != 1 else states[0]
 
     cat2df = {cat: pd.read_table(data_path, sep=',', index_col=0, header=0) for (cat, data_path) in
               cat2file.items()}
