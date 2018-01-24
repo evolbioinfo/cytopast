@@ -24,8 +24,10 @@ NUM2COLOURS = {
     8: ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5'],
     9: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6'],
     10: ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd'],
-    11: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a', '#ffff99'],
-    12: ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd', '#ccebc5', '#ffed6f']
+    11: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a',
+         '#ffff99'],
+    12: ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd',
+         '#ccebc5', '#ffed6f']
 }
 WHITE = '#ffffff'
 
@@ -65,6 +67,39 @@ def _work(args):
     return category, apply_pastml(annotation_file=state_file, tree_file=tree, pastml=pastml_exe, model=model)
 
 
+def _do_nothing(args):
+    tree, df, work_dir, column, pastml_exe, model = args
+    logging.info('Processing {}'.format(column))
+    category = col_name2cat(column)
+
+    states = [s for s in df.unique() if not pd.isnull(s)]
+    n_states = len(states)
+    logging.info('States are {}'.format(states))
+
+    tree = Tree(tree, 3)
+    n_tips = len(tree.get_leaves())
+
+    rep_dir = os.path.join(work_dir, category, model)
+    res_file = os.path.join(rep_dir, STATES_TAB_PASTML_OUTPUT).format(tips=n_tips, states=n_states)
+    if os.path.exists(res_file):
+        return category, res_file
+    os.makedirs(rep_dir, exist_ok=True)
+
+    res_df = pd.DataFrame(index=[str(n.name) for n in tree.traverse()], columns=states)
+    res_df.fillna(value=True, inplace=True)
+    df.index = df.index.map(str)
+    df = df.filter(res_df.index, axis=0)
+
+    logging.info(df.head(3))
+
+    for state in states:
+        res_df.loc[df[df == state].index.tolist(), res_df.columns[res_df.columns != state]] = False
+
+    res_df.astype(bool).to_csv(res_file, sep=',', index=True)
+
+    return category, res_file
+
+
 def col_name2cat(column):
     """
     Reformats the column string to make sure it contains only numerical or letter characters.
@@ -75,7 +110,8 @@ def col_name2cat(column):
     return column_string
 
 
-def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t', pastml_exe='PASTML', model='JC'):
+def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t', pastml_exe='PASTML', model='JC',
+                           copy_data=None):
     """
     Applies PASTML as many times as there are categories (columns) in the data,
     infers ancestor states and reformats them into an output tab/csv file.
@@ -93,6 +129,12 @@ def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t', past
         col2annotation_files = \
             pool.map(func=_work, iterable=((tree, data[column], work_dir, column, pastml_exe, model)
                                            for column in data.columns))
+    if copy_data is not None:
+        with ThreadPool() as pool:
+            col2annotation_files.extend(
+                pool.map(func=_do_nothing, iterable=((tree, copy_data[column], work_dir, column, pastml_exe, model)
+                                                     for column in copy_data.columns)))
+
     logging.info('Combining the data from different columns...')
     col2annotation_files = dict(col2annotation_files)
     pasml_annotations2cytoscape_annotation(col2annotation_files, res_annotations, sep=sep)
@@ -107,7 +149,7 @@ def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t', past
 
 
 def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, columns=None, name_column=None,
-           for_names_only=False, work_dir=None, all=False, pastml_exe='PASTML', model='JC'):
+           for_names_only=False, work_dir=None, all=False, pastml_exe='PASTML', model='JC', copy_columns=None):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
     :param tree: str, path to the input tree in newick format.
@@ -165,9 +207,10 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
 
     infer_ancestral_states(tree=new_tree, work_dir=work_dir,
                            res_annotations=res_annotations, data=df[columns], sep=data_sep,
-                           pastml_exe=pastml_exe, model=model)
+                           pastml_exe=pastml_exe, model=model, copy_data=df[copy_columns] if copy_columns else None)
 
-    past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep, columns=columns, name_column=name_column,
+    past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
+             columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
              for_names_only=for_names_only, all=all)
 
     if using_temp_dir:
@@ -276,14 +319,18 @@ if '__main__' == __name__:
                         help="the index of the column in the data table that contains the tree tip names, "
                              "indices start from zero (by default is set to 0).")
     parser.add_argument('--columns', nargs='*',
-                        help="names of the data table columns that contain states to be analysed with PASTML,"
+                        help="names of the data table columns that contain states to be analysed with PASTML, "
                              "if not specified all columns will be considered.",
+                        type=str)
+    parser.add_argument('--copy_columns', nargs='*',
+                        help="names of the data table columns that contain tip states to be used for visualisation "
+                             "without applying PASTML (ancestral states would stay unresolved).",
                         type=str)
     parser.add_argument('--name_column', type=str, default=None,
                         help="name of the data table column to be used for node names in the visualisation"
                              "(must be one of those specified in columns, if columns are specified)."
                              "If the data table contains only one column it will be used by default.")
-    parser.add_argument('--for_names_only', action='store_true', 
+    parser.add_argument('--for_names_only', action='store_true',
                         help="If specified, and if we are to analyse multiple states (specified in columns),"
                              "and the name_column is specified,"
                              "then the name_column won't be assigned a coloured section on the nodes, "

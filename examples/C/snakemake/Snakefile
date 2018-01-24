@@ -14,7 +14,6 @@ py_config = config['py_config']
 cytopast_path = '%s/%s' % (folder, config['cytopast'])
 fasta_in = os.path.join(data_dir, config['fasta'])
 fa = os.path.join(data_dir, 'sequences_renamed.fasta')
-pastml = os.path.abspath(config['pastml'])
 
 n = 5
 
@@ -686,7 +685,7 @@ rule pastml_drm_loc:
 
             python3 {cytopast_path}/cytopast/pastml_analyser.py --tree {input.tree} --data {input.data} \
             --html_compressed {output.map} --data_sep '\t' --id_index 0 --model '{params.model}'\
-            --work_dir {params.dir} --columns {columns} {params.loc} --name_column {params.loc} --pastml_exe {pastml}
+            --work_dir {params.dir} --columns {columns} {params.loc} --name_column {params.loc}
         """)
 
 rule pastml_drm:
@@ -715,7 +714,7 @@ rule pastml_drm:
 
             python3 {cytopast_path}/cytopast/pastml_analyser.py --tree {input.tree} --data {input.data} \
             --html_compressed {output.map} --data_sep '\t' --id_index 0 --model '{params.model}'\
-            --work_dir {params.dir} --columns {columns} --pastml_exe {pastml}
+            --work_dir {params.dir} --columns {columns}
         """)
 
 rule pastml_loc:
@@ -741,5 +740,5 @@ rule pastml_loc:
 
             python3 {cytopast_path}/cytopast/pastml_analyser.py --tree {input.tree} --data {input.data} \
             --html_compressed '{output.map}' --data_sep '\t' --id_index 0 --model '{params.model}'\
-            --work_dir {params.dir} --columns '{params.loc}' --name_column '{params.loc}' --pastml_exe {pastml}
+            --work_dir {params.dir} --columns '{params.loc}' --name_column '{params.loc}'
         """)
