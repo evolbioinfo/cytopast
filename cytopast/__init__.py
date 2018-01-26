@@ -1,12 +1,13 @@
 import logging
 import os
-from collections import defaultdict, Counter
+from collections import defaultdict
 from functools import reduce
 from queue import Queue
 
 import numpy as np
 import pandas as pd
 from ete3 import Tree, TreeNode
+import pastml_module
 
 CATEGORIES = 'categories'
 
@@ -46,12 +47,11 @@ def name_tree(tree):
     return i > 0
 
 
-def apply_pastml(annotation_file, tree_file, pastml, out_dir=None, model='JC'):
+def apply_pastml(annotation_file, tree_file, out_dir=None, model='JC'):
     """
     Applies PASTML on the given tree and annotation file.
     :param annotation_file: path to the csv state file: tip_name,state
     :param tree_file: path to the tree nwk file
-    :param pastml: path to the PASTML binary
     :return: path to the annotation file produced by PASTML
     """
     tree = read_tree(tree_file)
@@ -71,14 +71,19 @@ def apply_pastml(annotation_file, tree_file, pastml, out_dir=None, model='JC'):
     out_dir = os.path.abspath(out_dir)
     os.makedirs(out_dir, exist_ok=True)
 
-    command = 'cd {dir}; {pastml} -a {annotation_file} -t {tree_file} -m {model} -I T > {log_file}'.format(
-        dir=out_dir, pastml=pastml, annotation_file=os.path.abspath(annotation_file),
-        tree_file=os.path.abspath(tree_file), model=model,
-        log_file=os.path.join(out_dir, 'pastml_log.log'))
-    logging.info(command)
-    os.system(command)
-
     res_data = os.path.join(out_dir, STATES_TAB_PASTML_OUTPUT).format(tips=n_tips, states=n_states)
+    res_tree = os.path.join(out_dir, TREE_NWK_PASTML_OUTPUT).format(tips=n_tips, states=n_states)
+    annotation_file = os.path.abspath(annotation_file)
+    tree_file = os.path.abspath(tree_file)
+
+    logging.info('Annotation file is "{}"'.format(annotation_file))
+    logging.info('Tree file is "{}"'.format(tree_file))
+    logging.info('Out annotation file is "{}"'.format(res_data))
+    logging.info('Out tree file is "{}"'.format(res_tree))
+    logging.info('Model is "{}"'.format(model))
+
+    pastml_module.infer_ancestral_states(annotation_file, tree_file, res_data, res_tree, model)
+
     pd.read_table(res_data, sep=', ', header=0, index_col=0).astype(bool).to_csv(res_data, sep=',', index=True)
     return res_data
 

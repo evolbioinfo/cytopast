@@ -17,13 +17,13 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    version='0.1.3',
+    version='0.2',
     description='Visualisation of PASTML trees.',
     author='Anna Zhukova',
     author_email='anna.zhukova@pasteur.fr',
     url='https://gitlab.pasteur.fr/phylo/cytopast',
     download_url='https://gitlab.pasteur.fr/phylo/cytopast/archive/0.1.zip',
     keywords=['PASTML', 'visualisation', 'phylogeny'],
-    install_requires=['ete3', 'pandas', 'numpy', 'jinja2'],
-    requires=['ete3', 'pandas', 'numpy', 'jinja2']
+    install_requires=['ete3', 'pandas', 'numpy', 'jinja2', 'pastml_module'],
+    requires=['ete3', 'pandas', 'numpy', 'jinja2', 'pastml_module']
 )

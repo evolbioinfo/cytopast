@@ -42,7 +42,7 @@ def random_hex_color():
 
 
 def _work(args):
-    tree, df, work_dir, column, pastml_exe, model = args
+    tree, df, work_dir, column, model = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
     rep_dir = os.path.join(work_dir, category, model)
@@ -64,11 +64,11 @@ def _work(args):
         df.replace(np.nan, other_state, inplace=True)
 
     df.to_csv(state_file, index=True, header=False)
-    return category, apply_pastml(annotation_file=state_file, tree_file=tree, pastml=pastml_exe, model=model)
+    return category, apply_pastml(annotation_file=state_file, tree_file=tree, model=model)
 
 
 def _do_nothing(args):
-    tree, df, work_dir, column, pastml_exe, model = args
+    tree, df, work_dir, column, model = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
 
@@ -110,13 +110,11 @@ def col_name2cat(column):
     return column_string
 
 
-def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t', pastml_exe='PASTML', model='JC',
-                           copy_data=None):
+def apply_pastml_to_all_columns(tree, data, work_dir, res_annotations, sep='\t', model='JC', copy_data=None):
     """
     Applies PASTML as many times as there are categories (columns) in the data,
     infers ancestor states and reformats them into an output tab/csv file.
     :param model: str (optional, default is 'JC'), model to be used by PASTML.
-    :param pastml_exe: str (default is 'PASTML'), path to the PASTML executable.
     :param tree: str, path to the tree in newick format.
     :param data: pandas.DataFrame containing tree tip names as indices and categories as columns.
     :param work_dir: str, path to the working dir where PASTML can place its temporary files.
@@ -127,12 +125,12 @@ def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t', past
     """
     with ThreadPool() as pool:
         col2annotation_files = \
-            pool.map(func=_work, iterable=((tree, data[column], work_dir, column, pastml_exe, model)
+            pool.map(func=_work, iterable=((tree, data[column], work_dir, column, model)
                                            for column in data.columns))
     if copy_data is not None:
         with ThreadPool() as pool:
             col2annotation_files.extend(
-                pool.map(func=_do_nothing, iterable=((tree, copy_data[column], work_dir, column, pastml_exe, model)
+                pool.map(func=_do_nothing, iterable=((tree, copy_data[column], work_dir, column, model)
                                                      for column in copy_data.columns)))
 
     logging.info('Combining the data from different columns...')
@@ -148,8 +146,8 @@ def infer_ancestral_states(tree, data, work_dir, res_annotations, sep='\t', past
         df.to_csv(res_annotations, sep=sep)
 
 
-def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, columns=None, name_column=None,
-           for_names_only=False, work_dir=None, all=False, pastml_exe='PASTML', model='JC', copy_columns=None):
+def pastml_pipeline(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, columns=None, name_column=None,
+                    for_names_only=False, work_dir=None, all=False, model='JC', copy_columns=None):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
     :param tree: str, path to the input tree in newick format.
@@ -171,7 +169,6 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
     :param work_dir: str (optional), path to the working dir for PASTML (if not specified a temporary dir will be created).
     :param all: bool (optional, by default is False), if to keep all the nodes in the map, even the minor ones.
     :param model: str (optional, default is 'JC'), model to be used by PASTML.
-    :param pastml_exe: str (default is 'PASTML'), path to the PASTML executable.
     :return: void
     """
     using_temp_dir = False
@@ -205,9 +202,8 @@ def pastml(tree, data, html_compressed, html=None, data_sep='\t', id_index=0, co
     else:
         root = read_tree(new_tree)
 
-    infer_ancestral_states(tree=new_tree, work_dir=work_dir,
-                           res_annotations=res_annotations, data=df[columns], sep=data_sep,
-                           pastml_exe=pastml_exe, model=model, copy_data=df[copy_columns] if copy_columns else None)
+    apply_pastml_to_all_columns(tree=new_tree, data=df[columns], work_dir=work_dir, res_annotations=res_annotations,
+                                sep=data_sep, model=model, copy_data=df[copy_columns] if copy_columns else None)
 
     past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
              columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
@@ -335,8 +331,6 @@ if '__main__' == __name__:
                              "and the name_column is specified,"
                              "then the name_column won't be assigned a coloured section on the nodes, "
                              "but will only be shown as node names.")
-    parser.add_argument('--pastml_exe', required=False, default='PASTML', type=str,
-                        help="path to the PASTML executable.")
     parser.add_argument('--model', required=False, default='JC', type=str,
                         help="the model to be used by PASTML (can be JC or F81).")
     parser.add_argument('--work_dir', required=False, default=None, type=str,
@@ -344,4 +338,4 @@ if '__main__' == __name__:
     parser.add_argument('--all', action='store_true', help="Keep all the nodes in the map, even the minor ones.")
     params = parser.parse_args()
 
-    pastml(**vars(params))
+    pastml_pipeline(**vars(params))
