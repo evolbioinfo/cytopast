@@ -8,7 +8,7 @@ setup(
                                os.path.join('..', 'README.md')]},
     long_description=open('README.md').read(),
     include_package_data=True,
-    platform=['Linux'],
+    platform=['Linux', 'Windows', 'Mac OS'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Console',
@@ -17,7 +17,7 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    version='0.2.1',
+    version='0.2.9',
     description='Visualisation of PASTML trees.',
     author='Anna Zhukova',
     author_email='anna.zhukova@pasteur.fr',
