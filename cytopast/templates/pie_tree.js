@@ -68,14 +68,17 @@ cy.on('mouseover', 'node', function(event) {
     var node = event.target;
     if (node.data('tooltip') !== undefined) {
         node.qtip({
-             content: node.data('tooltip'),
-             show: {
-                event: event.type,
-                ready: true
-             },
-             hide: {
-                event: 'mouseout unfocus'
-             }
+            content: node.data('tooltip'),
+            show: {
+               event: event.type,
+               ready: true
+            },
+            hide: {
+               event: 'mouseout unfocus'
+            },
+            style: {
+                classes: 'qtip-bootstrap',
+            }
         }, event);
     }
 });

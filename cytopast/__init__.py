@@ -7,7 +7,11 @@ from queue import Queue
 import numpy as np
 import pandas as pd
 from ete3 import Tree, TreeNode
-import pastml_module
+import pastml
+
+from cytopast.stdout_redirector import HideOutput
+
+REASONABLE_NUMBER_OF_TIPS = 12
 
 CATEGORIES = 'categories'
 
@@ -24,7 +28,6 @@ MAX_NUM_TIPS_BELOW = 'max_num_tips'
 EDGE_SIZE = 'edge_size'
 METACHILD = 'metachild'
 FONT_SIZE = 'fontsize'
-
 
 def name_tree(tree):
     """
@@ -76,15 +79,18 @@ def apply_pastml(annotation_file, tree_file, out_dir=None, model='JC'):
     annotation_file = os.path.abspath(annotation_file)
     tree_file = os.path.abspath(tree_file)
 
-    logging.info('Annotation file is "{}"'.format(annotation_file))
-    logging.info('Tree file is "{}"'.format(tree_file))
-    logging.info('Out annotation file is "{}"'.format(res_data))
-    logging.info('Out tree file is "{}"'.format(res_tree))
-    logging.info('Model is "{}"'.format(model))
+    hide_warnings = logging.getLogger().getEffectiveLevel() >= logging.ERROR
+    try:
+        if hide_warnings:
+            with HideOutput():
+                pastml.infer_ancestral_states(annotation_file, tree_file, res_data, res_tree, model)
+        else:
+            pastml.infer_ancestral_states(annotation_file, tree_file, res_data, res_tree, model)
+    except:
+        return None
 
-    pastml_module.infer_ancestral_states(annotation_file, tree_file, res_data, res_tree, model)
-
-    pd.read_table(res_data, sep=', ', header=0, index_col=0).astype(bool).to_csv(res_data, sep=',', index=True)
+    pd.read_table(res_data, sep=', ', header=0, index_col=0, engine='python').astype(bool).\
+        to_csv(res_data, sep=',', index=True)
     return res_data
 
 
@@ -102,7 +108,6 @@ def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
         cat_df.index = cat_df.index.map(str)
         df[cat] = df.index.map(lambda name: get_states(name, cat_df))
 
-    logging.info(df.sample(n=5))
     df.to_csv(output, sep=sep)
 
 
@@ -178,26 +183,28 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
 
     logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
                  .format('' if merge_different_sizes else 'not '))
-    parents = [tree]
-    while parents:
-        collapse_horizontally(lambda _: get_states(_, categories), parents=parents, tips2bin=tips2bin)
-        parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
+    collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
+
+    if not merge_different_sizes and can_merge_diff_sizes and len(tree.get_leaves()) > REASONABLE_NUMBER_OF_TIPS:
+        merge_different_sizes = True
+        tips2bin = lambda _: int(np.log10(max(1, _)))
+
+        logging.info('Gonna re-collapse horizontally, merging nodes of different sizes')
+        collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
 
     if cut:
         tip_sizes = [getattr(_, MAX_NUM_TIPS_INSIDE, 0) * getattr(_, EDGE_SIZE, 1) for _ in tree.get_leaves()]
-        if len(tip_sizes) > 15:
-            threshold = sorted(tip_sizes)[-15]
+        if len(tip_sizes) > REASONABLE_NUMBER_OF_TIPS:
+            threshold = sorted(tip_sizes)[-REASONABLE_NUMBER_OF_TIPS]
             logging.info('Removing tips of size less than {}'.format(threshold))
             remove_small_tips(tree,
                               to_be_removed=lambda _: getattr(_, MAX_NUM_TIPS_INSIDE, 0)
                                                       * getattr(_, EDGE_SIZE, 1) <= threshold)
         remove_mediators(tree, lambda _: get_states(_, categories))
+
     logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
                  .format('' if merge_different_sizes else 'not '))
-    parents = [tree]
-    while parents:
-        collapse_horizontally(lambda _: get_states(_, categories), parents=parents, tips2bin=tips2bin)
-        parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
+    collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
 
     tip_sizes = [getattr(n, MAX_NUM_TIPS_INSIDE, 0) for n in tree.traverse() if getattr(n, MAX_NUM_TIPS_INSIDE, 0)]
     max_size = max(tip_sizes)
@@ -249,6 +256,13 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
     return tree
 
 
+def collapse_horizontally(tips2bin, tree, get_states):
+    parents = [tree]
+    while parents:
+        _collapse_horizontally(get_states, parents=parents, tips2bin=tips2bin)
+        parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
+
+
 def get_scaling_function(y_m, y_M, x_m, x_M):
     # calculate a linear function y = k x + b, where y \in [m, M]
     if x_M <= x_m:
@@ -258,7 +272,7 @@ def get_scaling_function(y_m, y_M, x_m, x_M):
     return lambda _: int(k * _ + b)
 
 
-def collapse_horizontally(get_states, parents, tips2bin=lambda _: _):
+def _collapse_horizontally(get_states, parents, tips2bin=lambda _: _):
     def get_sorted_states(n, add_edge_size=True):
         return tuple(sorted(get_states(n))), tips2bin(getattr(n, MAX_NUM_TIPS_INSIDE, 0)), \
                (getattr(n, EDGE_SIZE, 1) if add_edge_size else -1)
