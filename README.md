@@ -19,29 +19,23 @@ from cytopast.pastml_analyser import pastml_pipeline
 # Path to the table containing tip/node annotations, in csv or tab format
 data = "/path/to/the/table/eg/data.csv"
 
-
 # Path to the tree in newick format
 tree = "/path/to/the/tree/eg/tree.nwk"
-
 
 # Columns present in the annotation table,
 # for which we want to reconstruct ancestral states
 columns = ['Location', 'Resistant_or_not']
-
 
 # Columns present in the annotation table,
 # for which we want to copy existing annotations from the annotation table,
 # without inferring ancestral states
 copy_columns = ['Sex']
 
-
 # Path to the output compressed map visualisation
 html_compressed = "/path/to/the/future/map/eg/map.html"
 
-
 # Path to the output tree visualisation
 html = "/path/to/the/future/tree/visualisation/eg/tree.html"
-
 
 pastml_pipeline(data=data, data_sep=',', columns=columns, name_column='Location',
                 tree=tree,
