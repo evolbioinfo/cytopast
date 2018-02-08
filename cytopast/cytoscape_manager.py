@@ -15,7 +15,7 @@ INNER_NODE_SHAPE = 'rectangle'
 TIP_SHAPE = 'ellipse'
 
 DEFAULT_EDGE_SIZE = 10
-DEFAULT_EDGE_COLOR = '#808080'
+DEFAULT_EDGE_COLOR = '#909090'
 SPECIAL_EDGE_COLOR = '#383838'
 
 FONT_SIZE = 'fontsize'
@@ -105,13 +105,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_k
             edges.append(_get_edge(**edge_data))
 
     json_dict = {NODES: nodes, EDGES: edges}
-    return json_dict, clazzes
-
-
-def json2cyjs(json_dict, out_cyjs, graph_name='Tree'):
-    json_dict = {DATA: {NAME: graph_name}, ELEMENTS: json_dict}
-    with open(out_cyjs, 'w+') as fp:
-        json.dump(json_dict, fp)
+    return json_dict, sorted(clazzes)
 
 
 def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feature=STATE,

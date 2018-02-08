@@ -1,94 +1,96 @@
 import logging
 import os
-import random
+import pastml
 import shutil
 import tempfile
 from multiprocessing.pool import ThreadPool
 
 import numpy as np
 import pandas as pd
-from ete3 import Tree
 
-from cytopast import apply_pastml, compress_tree, STATES_TAB_PASTML_OUTPUT, read_tree, \
-    pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree
+from cytopast import compress_tree, read_tree, \
+    pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree, HideOutput
+from cytopast.colour_generator import get_enough_colours, WHITE
 from cytopast.cytoscape_manager import save_as_cytoscape_html
 
-NUM2COLOURS = {
-    1: ['#fdc086'],
-    2: ['#b2df8a', '#1f78b4'],
-    3: ['#8dd3c7', '#ffffb3', '#bebada'],
-    4: ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3'],
-    5: ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00'],
-    6: ['#7fc97f', '#beaed4', '#fdc086', '#ffff99', '#386cb0', '#f0027f'],
-    7: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f'],
-    8: ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5'],
-    9: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6'],
-    10: ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd'],
-    11: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a',
-         '#ffff99'],
-    12: ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd',
-         '#ccebc5', '#ffed6f']
-}
-WHITE = '#ffffff'
-
-
-def random_hex_color():
-    """
-    Generates and returns a random HEX colour.
-    :return: str, HEX colour
-    """
-    r = lambda: random.randint(100, 255)
-    return '#%02X%02X%02X' % (r(), r(), r())
+STATES_TAB_PASTML_OUTPUT = 'Result.tree_{tree}.category_{category}.txt'
 
 
 def _work(args):
-    tree, df, work_dir, column, model = args
+    tree, df, work_dir, column, model, cache = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
-    rep_dir = os.path.join(work_dir, category, model)
-    unique_states = df.unique()
-    n_tips = len(Tree(tree, 3).get_leaves())
-    res_file = os.path.join(rep_dir, STATES_TAB_PASTML_OUTPUT).format(tips=n_tips,
-                                                                      states=len(unique_states))
-    if os.path.exists(res_file):
-        return column, res_file
-    os.makedirs(rep_dir, exist_ok=True)
-    state_file = os.path.join(rep_dir, 'state_{}.csv'.format(category))
+    res_dir = os.path.abspath(os.path.join(work_dir, category, model))
 
     # For binary states make sure that 0 or false is not mistaken by missing data
-    if len(unique_states) == 2 and np.any(pd.isnull(unique_states)):
-        state = unique_states[~pd.isnull(unique_states)][0]
+    if len(df.unique()) == 2 and np.any(pd.isnull(df.unique())):
+        state = df.unique()[~pd.isnull(df.unique())][0]
         other_state = not state if isinstance(state, bool) \
             else (0 if isinstance(state, (int, float, complex)) and state != 0
                   else 'other' if state != 'other' else 'unknown')
         df.replace(np.nan, other_state, inplace=True)
 
+    unique_states = [s for s in df.unique() if not pd.isnull(s)]
+    logging.info('States are {}'.format(unique_states))
+    tree_name = os.path.splitext(os.path.basename(tree))[0]
+    res_file = os.path.join(res_dir, STATES_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
+    if cache and os.path.exists(res_file):
+        return column, res_file
+    os.makedirs(res_dir, exist_ok=True)
+    state_file = os.path.join(res_dir, 'state_{}.csv'.format(category))
+
+    # Keep only records corresponding to the tips in the state file
+    names = df.index.astype(np.str)
+    df = df[np.in1d(names, [n.name for n in read_tree(tree).iter_leaves()])]
+    # Prepare the state file for PASTML
     df.to_csv(state_file, index=True, header=False)
-    pastml_res = apply_pastml(annotation_file=state_file, tree_file=tree, model=model)
-    if pastml_res is None:
+
+    res_tree = os.path.join(res_dir, 'temp.tree.pastml.{tree}.{category}.nwk').format(tree=tree_name, category=category)
+
+    hide_warnings = logging.getLogger().getEffectiveLevel() >= logging.ERROR
+    try:
+        if hide_warnings:
+            with HideOutput():
+                pastml.infer_ancestral_states(state_file, os.path.abspath(tree), res_file, res_tree,
+                                              model)
+        else:
+            pastml.infer_ancestral_states(state_file, os.path.abspath(tree), res_file, res_tree, model)
+    except:
         logging.error("PASTML could not infer states for {}, so we'll keep the tip states only.".format(category))
-    return column, pastml_res
+        return column, None
+
+    # Try to remove a useless tree produced by PASTML
+    try:
+        os.remove(res_tree)
+    except:
+        pass
+
+    df = pd.read_table(res_file, sep=', ', header=0, index_col=0, engine='python').astype(bool)
+
+    # Replace missing data for tip columns (all False) with any state being possible (all True)
+    df[(df == False).all(axis=1)] = True
+
+    df.to_csv(res_file, sep=',', index=True)
+    return column, res_file
 
 
 def _do_nothing(args):
-    tree, df, work_dir, column, model = args
+    tree, df, work_dir, column, model, cache = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
 
     states = [s for s in df.unique() if not pd.isnull(s)]
-    n_states = len(states)
     logging.info('States are {}'.format(states))
 
-    tree = Tree(tree, 3)
-    n_tips = len(tree.get_leaves())
+    tree_name = os.path.splitext(os.path.basename(tree))[0]
+    res_dir = os.path.abspath(os.path.join(work_dir, category, model))
+    res_file = os.path.join(res_dir, STATES_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
 
-    rep_dir = os.path.join(work_dir, category, model)
-    res_file = os.path.join(rep_dir, STATES_TAB_PASTML_OUTPUT).format(tips=n_tips, states=n_states)
-    if os.path.exists(res_file):
+    if cache and os.path.exists(res_file):
         return column, res_file
-    os.makedirs(rep_dir, exist_ok=True)
+    os.makedirs(res_dir, exist_ok=True)
 
-    res_df = pd.DataFrame(index=[str(n.name) for n in tree.traverse()], columns=states)
+    res_df = pd.DataFrame(index=[str(n.name) for n in read_tree(tree).traverse()], columns=states)
     res_df.fillna(value=True, inplace=True)
     df.index = df.index.map(str)
     df = df.filter(res_df.index, axis=0)
@@ -97,7 +99,6 @@ def _do_nothing(args):
         res_df.loc[df[df == state].index.tolist(), res_df.columns[res_df.columns != state]] = False
 
     res_df.astype(bool).to_csv(res_file, sep=',', index=True)
-
     return column, res_file
 
 
@@ -111,7 +112,8 @@ def col_name2cat(column):
     return column_string
 
 
-def apply_pastml_to_all_columns(tree, df, columns, work_dir, res_annotations, sep='\t', model='JC', copy_columns=None):
+def apply_pastml_to_all_columns(tree, df, columns, work_dir, res_annotations, sep='\t', model='JC', copy_columns=None,
+                                cache=False):
     """
     Applies PASTML as many times as there are categories (columns) in the data,
     infers ancestor states and reformats them into an output tab/csv file.
@@ -125,10 +127,10 @@ def apply_pastml_to_all_columns(tree, df, columns, work_dir, res_annotations, se
     :return: void
     """
     col2annotation_files = []
-    if columns:
+    if columns is not None and len(columns):
         with ThreadPool() as pool:
             col2annotation_files = \
-                dict(pool.map(func=_work, iterable=((tree, df[column], work_dir, column, model)
+                dict(pool.map(func=_work, iterable=((tree, df[column], work_dir, column, model, cache)
                                                     for column in columns)))
     if copy_columns is None:
         copy_columns = []
@@ -139,7 +141,7 @@ def apply_pastml_to_all_columns(tree, df, columns, work_dir, res_annotations, se
     if copy_columns:
         with ThreadPool() as pool:
             col2annotation_files.update(
-                dict(pool.map(func=_do_nothing, iterable=((tree, df[column], work_dir, column, model)
+                dict(pool.map(func=_do_nothing, iterable=((tree, df[column], work_dir, column, model, cache)
                                                           for column in copy_columns))))
 
     col2annotation_files = {col_name2cat(col): af for (col, af) in col2annotation_files.items()}
@@ -156,10 +158,13 @@ def apply_pastml_to_all_columns(tree, df, columns, work_dir, res_annotations, se
         df.to_csv(res_annotations, sep=sep)
 
 
-def pastml_pipeline(tree, data, html_compressed=None, html=None, data_sep='\t', id_index=0, columns=None,
-                    name_column=None,
-                    for_names_only=False, work_dir=None, all=False, model='JC', copy_columns=None,
-                    verbose=False):
+def quote(str_list):
+    return ', '.join('"{}"'.format(_) for _ in str_list) if str_list is not None else ''
+
+
+def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, data_sep='\t', id_index=0, columns=None,
+                    name_column=None, work_dir=None, all=False, model='JC', copy_columns=None,
+                    verbose=False, cache=False):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
     :param tree: str, path to the input tree in newick format.
@@ -175,9 +180,6 @@ def pastml_pipeline(tree, data, html_compressed=None, html=None, data_sep='\t', 
     :param name_column: str (optional), name of the data table column to be used for node names in the visualisation
     (must be one of those specified in columns, if columns are specified). If the data table contains only one column,
     it will be used by default.
-    :param for_names_only: bool (optional, by default is False) If is set to True, and we are to analyse multiple states
-    (specified in columns),and the name_column is specified,
-    then the name_column won't be assigned a coloured section on the nodes, but will only be shown as node names.
     :param work_dir: str (optional), path to the working dir for PASTML (if not specified a temporary dir will be created).
     :param all: bool (optional, by default is False), if to keep all the nodes in the map, even the minor ones.
     :param model: str (optional, default is 'JC'), model to be used by PASTML.
@@ -196,25 +198,36 @@ def pastml_pipeline(tree, data, html_compressed=None, html=None, data_sep='\t', 
 
     df = pd.read_table(data, sep=data_sep, index_col=id_index, header=0)
 
-    if not columns:
+    unknown_columns = ((set(columns) if columns else set()) | (set(copy_columns) if copy_columns else set())) \
+                                                             - set(df.columns)
+    if unknown_columns:
+        raise ValueError('{} of the specified columns ({}) {} not found among the annotation columns: {}.'
+                         .format('One' if len(unknown_columns) == 1 else 'Some',
+                                 quote(unknown_columns),
+                                 'is' if len(unknown_columns) == 1 else 'are',
+                                 quote(df.columns)))
+
+    if not columns and not copy_columns:
         columns = df.columns
 
-    if name_column and not name_column in columns and (not copy_columns or name_column not in copy_columns):
-        raise ValueError('The name column should be one of those specified as columns or copy_columns.')
+    if name_column and (not columns or name_column not in columns) \
+            and (not copy_columns or name_column not in copy_columns):
+        raise ValueError('The name column ({}) should be one of those specified as columns ({}) or copy_columns ({}).'
+                         .format(quote([name_column]), quote(columns), quote(copy_columns)))
 
-    res_annotations = \
-        os.path.join(work_dir, 'combined_annotations_{}_{}.tab'.format('_'.join(columns), model))
+    tree_name = os.path.basename(tree)
 
-    new_tree = os.path.join(work_dir, os.path.basename(tree) + '.pastml.nwk')
-    if not os.path.exists(new_tree):
+    res_annotations = out_data if out_data else \
+        os.path.join(work_dir, 'combined_annotations_{}_{}_{}.tab'.format('_'.join(columns), model, tree_name))
+
+    new_tree = os.path.join(work_dir, tree_name + '.pastml.nwk')
+    if not cache or not os.path.exists(new_tree):
         root = read_tree(tree)
         names = df.index.astype(np.str)
-        nodes = [n for n in root.iter_leaves() if n.name in names]
-        n_tips = len(nodes)
-        need_to_prune = len(root.get_leaves()) > n_tips
-        if need_to_prune:
-            logging.info('Pruning...')
-            root.prune(nodes, preserve_branch_length=True)
+        node_names = [n.name for n in root.iter_leaves() if n.name not in names]
+        if node_names:
+            missing_value_df = pd.DataFrame(index=node_names, columns=df.columns)
+            df = df.append(missing_value_df)
         name_tree(root)
         root.write(outfile=new_tree, format=3, format_root_node=True)
     else:
@@ -222,18 +235,17 @@ def pastml_pipeline(tree, data, html_compressed=None, html=None, data_sep='\t', 
 
     apply_pastml_to_all_columns(tree=new_tree, df=df, columns=columns, work_dir=work_dir,
                                 res_annotations=res_annotations,
-                                sep=data_sep, model=model, copy_columns=copy_columns)
+                                sep=data_sep, model=model, copy_columns=copy_columns, cache=cache)
 
     past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
-             columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
-             for_names_only=for_names_only, all=all)
+             columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column, all=all)
 
     if using_temp_dir:
         shutil.rmtree(work_dir)
 
 
 def past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\t', columns=None, name_column=None,
-             for_names_only=False, all=False):
+             all=False):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
     :param tree: ete3.Tree, the tree of interest.
@@ -259,7 +271,7 @@ def past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\
 
     if name_column:
         name_column = col_name2cat(name_column)
-        if for_names_only or one_column:
+        if one_column:
             categories.remove(name_column)
 
     df = pd.read_table(res_annotations, index_col=0, header=0, sep=data_sep)
@@ -270,7 +282,7 @@ def past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\
             unique_values = sorted(unique_values[~pd.isnull(unique_values)].astype(str))
             num_unique_values = len(unique_values)
             colours = get_enough_colours(num_unique_values)
-            for value, col in zip(sorted(unique_values), colours):
+            for value, col in zip(unique_values, colours):
                 name2colour['{}_{}'.format(cat, value)] = col
             # let ambiguous values be white
             name2colour['{}_'.format(cat)] = WHITE
@@ -289,7 +301,7 @@ def past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\
 
     if html:
         save_as_cytoscape_html(tree, html, categories=categories, name2colour=name2colour, n2tooltip=n2tooltip,
-                               name_feature=name_column)
+                               name_feature='name')
 
     if html_compressed:
         tree = compress_tree(tree,
@@ -297,21 +309,6 @@ def past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\
                              name_feature=name_column, cut=not all)
         save_as_cytoscape_html(tree, html_compressed, categories,
                                name2colour=name2colour, add_fake_nodes=False, n2tooltip=n2tooltip)
-
-
-def get_enough_colours(num_unique_values):
-    """
-    Generates and returns an array of `num_unique_values` HEX colours.
-    :param num_unique_values: int, number of colours to be generated.
-    :return: array of str, containing colours in HEX format.
-    """
-    if num_unique_values <= 12:
-        colours = NUM2COLOURS[num_unique_values]
-    else:
-        colours = NUM2COLOURS[12]
-        for _ in range(len(colours), num_unique_values):
-            colours.append(random_hex_color())
-    return colours
 
 
 if '__main__' == __name__:
@@ -322,6 +319,8 @@ if '__main__' == __name__:
     parser.add_argument('--tree', help="the input tree in newick format.", type=str, required=True)
     parser.add_argument('--data', required=True, type=str,
                         help="the annotation file in tab/csv format with the first row containing the column names.")
+    parser.add_argument('--out_data', required=False, type=str,
+                        help="the output annotation file with the states inferred by PASTML.")
     parser.add_argument('--html_compressed', required=False, default=None, type=str,
                         help="the output summary map visualisation file (html).")
     parser.add_argument('--html', required=False, default=None, type=str,
@@ -334,27 +333,25 @@ if '__main__' == __name__:
                              "indices start from zero (by default is set to 0).")
     parser.add_argument('--columns', nargs='*',
                         help="names of the data table columns that contain states to be analysed with PASTML, "
-                             "if not specified all columns will be considered.",
+                             "if neither columns nor copy_columns are specified, then all columns will be considered.",
                         type=str)
     parser.add_argument('--copy_columns', nargs='*',
-                        help="names of the data table columns that contain tip states to be used for visualisation "
-                             "without applying PASTML (ancestral states would stay unresolved).",
+                        help="names of the data table columns that contain states to be used for visualisation "
+                             "without applying PASTML (the missing states will stay unresolved).",
                         type=str)
     parser.add_argument('--name_column', type=str, default=None,
-                        help="name of the data table column to be used for node names in the visualisation"
-                             "(must be one of those specified in columns, if columns are specified)."
+                        help="name of the data table column to be used for node names "
+                             "in the compressed map visualisation"
+                             "(must be one of those specified in columns or copy_columns if they are specified)."
                              "If the data table contains only one column it will be used by default.")
-    parser.add_argument('--for_names_only', action='store_true',
-                        help="If specified, and if we are to analyse multiple states (specified in columns),"
-                             "and the name_column is specified,"
-                             "then the name_column won't be assigned a coloured section on the nodes, "
-                             "but will only be shown as node names.")
     parser.add_argument('--model', required=False, default='JC', type=str,
                         help="the model to be used by PASTML (can be JC or F81).")
     parser.add_argument('--work_dir', required=False, default=None, type=str,
                         help="the working dir for PASTML (if not specified a temporary dir will be created).")
     parser.add_argument('--all', action='store_true', help="Keep all the nodes in the map, even the minor ones.")
     parser.add_argument('--verbose', action='store_true', help="print information on the progress of the analysis")
+    parser.add_argument('--cache', action='store_true',
+                        help="if set, the results of previous PASTML runs on this data will be reused when possible")
     params = parser.parse_args()
 
     pastml_pipeline(**vars(params))

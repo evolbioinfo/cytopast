@@ -6,8 +6,8 @@ import pandas as pd
 from ete3 import Tree
 
 from cytopast import pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, compress_tree
+from cytopast.colour_generator import get_enough_colours
 from cytopast.cytoscape_manager import save_as_cytoscape_html
-from cytopast.pastml_analyser import get_enough_colours
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'JTTvsJC', 'rate0.1')
 TREE_NWK = os.path.join(DATA_DIR, '1000.taxa.b.0.1.1.ID.tre')

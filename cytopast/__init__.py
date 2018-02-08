@@ -1,5 +1,4 @@
 import logging
-import os
 from collections import defaultdict
 from functools import reduce
 from queue import Queue
@@ -7,16 +6,12 @@ from queue import Queue
 import numpy as np
 import pandas as pd
 from ete3 import Tree, TreeNode
-import pastml
 
 from cytopast.stdout_redirector import HideOutput
 
 REASONABLE_NUMBER_OF_TIPS = 12
 
 CATEGORIES = 'categories'
-
-TREE_NWK_PASTML_OUTPUT = 'Result_treeIDs.{tips}.taxa.{states}.states.tre'
-STATES_TAB_PASTML_OUTPUT = 'Result_states_probs.FULL.{tips}.taxa.{states}.states.txt'
 
 SIZE = 'size'
 MIN_NUM_TIPS_INSIDE = 'min_size'
@@ -28,6 +23,7 @@ MAX_NUM_TIPS_BELOW = 'max_num_tips'
 EDGE_SIZE = 'edge_size'
 METACHILD = 'metachild'
 FONT_SIZE = 'fontsize'
+
 
 def name_tree(tree):
     """
@@ -50,50 +46,6 @@ def name_tree(tree):
     return i > 0
 
 
-def apply_pastml(annotation_file, tree_file, out_dir=None, model='JC'):
-    """
-    Applies PASTML on the given tree and annotation file.
-    :param annotation_file: path to the csv state file: tip_name,state
-    :param tree_file: path to the tree nwk file
-    :return: path to the annotation file produced by PASTML
-    """
-    tree = read_tree(tree_file)
-    n_tips = len(tree.get_leaves())
-
-    df = pd.read_csv(annotation_file, index_col=0, header=None)
-
-    names = df.index.astype(np.str)
-    df = df[np.in1d(names, [n.name for n in tree.iter_leaves()])]
-    df.to_csv(annotation_file, header=False, index=True)
-
-    states = df[1].unique()
-    logging.info('States are {}'.format(states))
-    n_states = len([s for s in states if not pd.isnull(s)])
-    if out_dir is None:
-        out_dir = os.path.dirname(annotation_file)
-    out_dir = os.path.abspath(out_dir)
-    os.makedirs(out_dir, exist_ok=True)
-
-    res_data = os.path.join(out_dir, STATES_TAB_PASTML_OUTPUT).format(tips=n_tips, states=n_states)
-    res_tree = os.path.join(out_dir, TREE_NWK_PASTML_OUTPUT).format(tips=n_tips, states=n_states)
-    annotation_file = os.path.abspath(annotation_file)
-    tree_file = os.path.abspath(tree_file)
-
-    hide_warnings = logging.getLogger().getEffectiveLevel() >= logging.ERROR
-    try:
-        if hide_warnings:
-            with HideOutput():
-                pastml.infer_ancestral_states(annotation_file, tree_file, res_data, res_tree, model)
-        else:
-            pastml.infer_ancestral_states(annotation_file, tree_file, res_data, res_tree, model)
-    except:
-        return None
-
-    pd.read_table(res_data, sep=', ', header=0, index_col=0, engine='python').astype(bool).\
-        to_csv(res_data, sep=',', index=True)
-    return res_data
-
-
 def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
 
     def get_states(name, cat_df):
@@ -108,7 +60,7 @@ def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
         cat_df.index = cat_df.index.map(str)
         df[cat] = df.index.map(lambda name: get_states(name, cat_df))
 
-    df.to_csv(output, sep=sep)
+    df.to_csv(output, sep=sep, index_label='Node')
 
 
 def annotate_tree_with_cyto_metadata(tree, data_path, sep='\t', one_state=False):
@@ -124,22 +76,6 @@ def annotate_tree_with_cyto_metadata(tree, data_path, sep='\t', one_state=False)
             data = df.loc[n.name, :]
             data = data[data != False]
             n.add_features(**data.to_dict())
-    return tree, sorted(df.columns)
-
-
-def annotate_tree_with_metadata(tree_path, data_path, sep=','):
-    df = pd.read_table(data_path, sep=sep, index_col=0, header=0)
-    df.index = df.index.map(str)
-    tree = read_tree(tree_path)
-
-    def get_states(name):
-        row = df.loc[name, :]
-        return df.columns[row > 0]
-
-    for n in tree.traverse():
-        states = get_states(n.name)
-        n.add_feature('state', str(states[0]) if len(states) == 1 else '')
-        n.add_feature(CATEGORIES, tuple(sorted(states)))
     return tree, sorted(df.columns)
 
 
