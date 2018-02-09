@@ -47,10 +47,9 @@ def name_tree(tree):
 
 
 def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
-
-    def get_states(name, cat_df):
-        row = cat_df.loc[name, :]
-        states = cat_df.columns[row]
+    def get_state(name, df):
+        row = df.loc[name, :]
+        states = df.columns[row]
         return None if len(states) != 1 else states[0]
 
     cat2df = {cat: pd.read_table(data_path, sep=',', index_col=0, header=0) for (cat, data_path) in
@@ -58,7 +57,7 @@ def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
     df = pd.DataFrame(index=next(iter(cat2df.values())).index, columns=cat2df.keys())
     for cat, cat_df in cat2df.items():
         cat_df.index = cat_df.index.map(str)
-        df[cat] = df.index.map(lambda name: get_states(name, cat_df))
+        df[cat] = df.index.map(lambda name: get_state(name, cat_df))
 
     df.to_csv(output, sep=sep, index_label='Node')
 

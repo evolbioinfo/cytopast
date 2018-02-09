@@ -56,10 +56,10 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_k
     while not queue.empty():
         n = queue.get(block=False)
         node2id[n] = i
-        i += 1    
+        i += 1
         for c in sorted(n.children, key=lambda _: sort_key(_, name_feature, node2tooltip)):
             queue.put(c, block=False)
-    
+
     for n, n_id in sorted(node2id.items(), key=lambda ni: ni[1]):
         if n == tree and add_fake_nodes and int(n.dist / dist_step) > 0:
             edge_name = getattr(n, 'edge_name', '%g' % n.dist)
@@ -68,7 +68,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_k
                                     FONT_SIZE: 1}))
             edges.append(_get_edge(**{SOURCE: source_name, TARGET: n_id, INTERACTION: 'triangle',
                                       SIZE: getattr(n, EDGE_SIZE, DEFAULT_EDGE_SIZE), NAME: edge_name,
-                                     'color': DEFAULT_EDGE_COLOR}))
+                                      'color': DEFAULT_EDGE_COLOR}))
         features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
         features[ID] = n_id
         features[NAME] = str(getattr(n, name_feature, '') if name_feature else '')
@@ -77,7 +77,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_k
         if FONT_SIZE not in n.features:
             features[FONT_SIZE] = 10
         if 'shape' not in n.features:
-            features['shape'] = TIP_SHAPE if n.is_leaf() and getattr(n, MAX_NUM_TIPS_INSIDE, 1) == 1\
+            features['shape'] = TIP_SHAPE if n.is_leaf() and getattr(n, MAX_NUM_TIPS_INSIDE, 1) == 1 \
                 else INNER_NODE_SHAPE if getattr(n, MAX_NUM_TIPS_INSIDE, 0) == 0 else MERGED_NODE_SHAPE
         tooltip = node2tooltip[n]
         features['tooltip'] = tooltip
@@ -85,7 +85,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_k
         if clazz:
             clazzes.add(clazz)
         nodes.append(_get_node(features, clazz=_clazz_list2css_class(clazz)))
-        for child in sorted(n.children, key=lambda c: node2id[c]):
+        for child in sorted(n.children, key=lambda _: node2id[_]):
             edge_color = SPECIAL_EDGE_COLOR if getattr(child, METACHILD, False) else DEFAULT_EDGE_COLOR
             source_name = n_id
             edge_size = getattr(child, EDGE_SIZE, DEFAULT_EDGE_SIZE)
@@ -125,13 +125,13 @@ def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feat
     otherwise all edges are drawn of the same length.
 
     otherwise all edges are drawn of the same length.
+    :param name_feature: str, a node feature whose value will be used as a label
     :param sort_key: a function, that given a tree node, the name_feature and a node to tooltip dict, 
     returns a key to be used for sorting nodes on the same level in the tree.
     :param n2tooltip: dict, TreeNode to str mapping tree nodes to tooltips.
     :param add_fake_nodes: bool, if to add fake nodes, needed for showing branch lengths. 
     :param layout: str, name of the layout for Cytoscape.js 
     :param name2colour: dict, str to str, category name to HEX colour mapping 
-    :param graph_name: str, the name of the web-page
     :param categories: a list of categories for the pie-charts inside the nodes
     :param tree: ete3.Tree
     :param out_html: path where to save the resulting html file.
@@ -141,8 +141,7 @@ def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feat
     json_dict, clazzes \
         = _tree2json(tree, categories=categories, add_fake_nodes=add_fake_nodes, name_feature=name_feature,
                      n2tooltip=n2tooltip, sort_key=sort_key)
-
-    env = Environment(loader=PackageLoader('cytopast', 'templates'))
+    env = Environment(loader=PackageLoader('cytopast'))
     template = env.get_template('pie_tree.js')
 
     clazz2css = {}
