@@ -1,7 +1,6 @@
-import json
+import os
 from queue import Queue
 
-import os
 from jinja2 import Environment, PackageLoader
 
 from cytopast import METACHILD, MAX_NUM_TIPS_INSIDE, get_states
@@ -160,7 +159,7 @@ def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feat
     template = env.get_template('index.html')
     page = template.render(graph=graph, title=graph_name)
 
-    os.makedirs(os.path.dirname(out_html), exist_ok=True)
+    os.makedirs(os.path.abspath(os.path.dirname(out_html)), exist_ok=True)
     with open(out_html, 'w+') as fp:
         fp.write(page)
 

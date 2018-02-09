@@ -49,35 +49,41 @@ pastml_pipeline(data=data, data_sep=',', columns=columns, name_column='Location'
                 verbose=True)
 ```
 
+## Basic usage from console
+```bash
+cytopast --tree ~/path/to/the/tree.nwk --data ~/path/to/the/annotation/data.txt --data_sep , \
+--html ~/path/to/the/output/visualisation/of/the/tree.html \
+--html_compressed ~/path/to/the/output/visualisation/of/the/compressed/map.html \
+--columns Location Resistant_or_not --name_column Location --verbose
+```
+
 ## Options
 
 ```
-usage: pastml_analyser.py [-h] --data DATA [--data_sep DATA_SEP]
-                          [--id_index ID_INDEX]
-                          [--columns [COLUMNS [COLUMNS ...]]]
-                          [--copy_columns [COPY_COLUMNS [COPY_COLUMNS ...]]]
-                          --tree TREE [--model MODEL] [--work_dir WORK_DIR]
-                          [--cache] [--name_column NAME_COLUMN] [--all]
-                          [--out_data OUT_DATA]
-                          [--html_compressed HTML_COMPRESSED] [--html HTML]
-                          [--verbose]
+usage: cytopast [-h] -d DATA [-s DATA_SEP] [-i ID_INDEX]
+                [-c [COLUMNS [COLUMNS ...]]]
+                [--copy_columns [COPY_COLUMNS [COPY_COLUMNS ...]]] -t TREE
+                [-m MODEL] [--work_dir WORK_DIR] [--cache] [-n NAME_COLUMN]
+                [-a] [-o OUT_DATA] [-p HTML_COMPRESSED] [-l HTML] [-v]
 
 Visualisation of annotated phylogenetic trees (as html maps).
 
 optional arguments:
   -h, --help            show this help message and exit
-  --verbose             print information on the progress of the analysis
+  -v, --verbose         print information on the progress of the analysis
 
 annotation-related arguments:
-  --data DATA           the annotation file in tab/csv format with the first
+  -d DATA, --data DATA  the annotation file in tab/csv format with the first
                         row containing the column names.
-  --data_sep DATA_SEP   the column separator for the data table. By default is
+  -s DATA_SEP, --data_sep DATA_SEP
+                        the column separator for the data table. By default is
                         set to tab, i.e. for tab file. Set it to ',' if your
                         file is csv.
-  --id_index ID_INDEX   the index of the column in the data table that
+  -i ID_INDEX, --id_index ID_INDEX
+                        the index of the column in the data table that
                         contains the tree tip names, indices start from zero
                         (by default is set to 0).
-  --columns [COLUMNS [COLUMNS ...]]
+  -c [COLUMNS [COLUMNS ...]], --columns [COLUMNS [COLUMNS ...]]
                         names of the data table columns that contain states to
                         be analysed with PASTML. If neither columns nor
                         copy_columns are specified, then all columns will be
@@ -88,10 +94,11 @@ annotation-related arguments:
                         states will stay unresolved).
 
 tree-related arguments:
-  --tree TREE           the input tree in newick format.
+  -t TREE, --tree TREE  the input tree in newick format.
 
 ancestral-state inference-related arguments:
-  --model MODEL         the evolutionary model to be used by PASTML (can be JC
+  -m MODEL, --model MODEL
+                        the evolutionary model to be used by PASTML (can be JC
                         or F81).
   --work_dir WORK_DIR   the working dir for PASTML to put intermediate files
                         into (if not specified a temporary dir will be
@@ -100,19 +107,20 @@ ancestral-state inference-related arguments:
                         data will be reused when possible
 
 visualisation-related arguments:
-  --name_column NAME_COLUMN
+  -n NAME_COLUMN, --name_column NAME_COLUMN
                         name of the data table column to be used for node
                         names in the compressed map visualisation(must be one
                         of those specified in columns or copy_columns if they
                         are specified).If the data table contains only one
                         column it will be used by default.
-  --all                 Keep all the nodes in the compressed map
+  -a, --all             Keep all the nodes in the compressed map
                         visualisation, even the minor ones.
 
 output-related arguments:
-  --out_data OUT_DATA   the output annotation file with the states inferred by
+  -o OUT_DATA, --out_data OUT_DATA
+                        the output annotation file with the states inferred by
                         PASTML.
-  --html_compressed HTML_COMPRESSED
+  -p HTML_COMPRESSED, --html_compressed HTML_COMPRESSED
                         the output summary map visualisation file (html).
-  --html HTML           the output tree visualisation file (html).
+  -l HTML, --html HTML  the output tree visualisation file (html).
 ```

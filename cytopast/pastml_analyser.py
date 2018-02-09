@@ -311,23 +311,23 @@ def past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\
                                name2colour=name2colour, add_fake_nodes=False, n2tooltip=n2tooltip)
 
 
-if '__main__' == __name__:
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Visualisation of annotated phylogenetic trees (as html maps).")
 
     annotation_group = parser.add_argument_group('annotation-related arguments')
-    annotation_group.add_argument('--data', required=True, type=str,
+    annotation_group.add_argument('-d', '--data', required=True, type=str,
                                   help="the annotation file in tab/csv format with the first row "
                                        "containing the column names.")
-    annotation_group.add_argument('--data_sep', required=False, type=str, default='\t',
+    annotation_group.add_argument('-s', '--data_sep', required=False, type=str, default='\t',
                                   help="the column separator for the data table. "
                                        "By default is set to tab, i.e. for tab file. " \
                                        "Set it to ',' if your file is csv.")
-    annotation_group.add_argument('--id_index', required=False, type=int, default=0,
+    annotation_group.add_argument('-i', '--id_index', required=False, type=int, default=0,
                                   help="the index of the column in the data table that contains the tree tip names, "
                                        "indices start from zero (by default is set to 0).")
-    annotation_group.add_argument('--columns', nargs='*',
+    annotation_group.add_argument('-c', '--columns', nargs='*',
                                   help="names of the data table columns that contain states "
                                        "to be analysed with PASTML. "
                                        "If neither columns nor copy_columns are specified, "
@@ -339,10 +339,10 @@ if '__main__' == __name__:
                                   type=str)
 
     tree_group = parser.add_argument_group('tree-related arguments')
-    tree_group.add_argument('--tree', help="the input tree in newick format.", type=str, required=True)
+    tree_group.add_argument('-t', '--tree', help="the input tree in newick format.", type=str, required=True)
 
     pastml_group = parser.add_argument_group('ancestral-state inference-related arguments')
-    pastml_group.add_argument('--model', required=False, default='JC', type=str,
+    pastml_group.add_argument('-m', '--model', required=False, default='JC', type=str,
                               help="the evolutionary model to be used by PASTML (can be JC or F81).")
     pastml_group.add_argument('--work_dir', required=False, default=None, type=str,
                               help="the working dir for PASTML to put intermediate files into "
@@ -352,23 +352,29 @@ if '__main__' == __name__:
                                    "when possible")
 
     vis_group = parser.add_argument_group('visualisation-related arguments')
-    vis_group.add_argument('--name_column', type=str, default=None,
+    vis_group.add_argument('-n', '--name_column', type=str, default=None,
                            help="name of the data table column to be used for node names "
                                 "in the compressed map visualisation"
                                 "(must be one of those specified in columns or copy_columns if they are specified)."
                                 "If the data table contains only one column it will be used by default.")
-    vis_group.add_argument('--all', action='store_true', help="Keep all the nodes in the compressed map visualisation, "
-                                                              "even the minor ones.")
+    vis_group.add_argument('-a', '--all', action='store_true',
+                           help="Keep all the nodes in the compressed map visualisation, "
+                                "even the minor ones.")
 
     out_group = parser.add_argument_group('output-related arguments')
-    out_group.add_argument('--out_data', required=False, type=str,
+    out_group.add_argument('-o', '--out_data', required=False, type=str,
                            help="the output annotation file with the states inferred by PASTML.")
-    out_group.add_argument('--html_compressed', required=False, default=None, type=str,
+    out_group.add_argument('-p', '--html_compressed', required=False, default=None, type=str,
                            help="the output summary map visualisation file (html).")
-    out_group.add_argument('--html', required=False, default=None, type=str,
+    out_group.add_argument('-l', '--html', required=False, default=None, type=str,
                            help="the output tree visualisation file (html).")
 
-    parser.add_argument('--verbose', action='store_true', help="print information on the progress of the analysis")
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help="print information on the progress of the analysis")
     params = parser.parse_args()
 
     pastml_pipeline(**vars(params))
+
+
+if '__main__' == __name__:
+    main()
