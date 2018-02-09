@@ -51,6 +51,14 @@ cytopast --tree /path/to/the/tree.nwk --data /path/to/the/annotation/data.txt --
 --columns Location Resistant_or_not --name_column Location --verbose
 ```
 
+## Basic usage with [docker](https://hub.docker.com/)
+```bash
+docker run -v /path/to/the/folder/containing/the_tree_and_annotations/:/data:rw -t evolbioinfo/pastml \
+--tree /data/tree.nwk --data /data/data.txt --data_sep , \
+--html /data/tree.html --html_compressed /data/map.html \
+--columns Location Resistant_or_not --name_column Location --verbose
+```
+
 ## Options
 
 ```
