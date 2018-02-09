@@ -45,9 +45,9 @@ pastml_pipeline(data=data, data_sep=',', columns=columns, name_column='Location'
 
 ## Basic usage from console
 ```bash
-cytopast --tree ~/path/to/the/tree.nwk --data ~/path/to/the/annotation/data.txt --data_sep , \
---html ~/path/to/the/output/visualisation/of/the/tree.html \
---html_compressed ~/path/to/the/output/visualisation/of/the/compressed/map.html \
+cytopast --tree /path/to/the/tree.nwk --data /path/to/the/annotation/data.txt --data_sep , \
+--html /path/to/the/output/visualisation/of/the/tree.html \
+--html_compressed /path/to/the/output/visualisation/of/the/compressed/map.html \
 --columns Location Resistant_or_not --name_column Location --verbose
 ```
 
