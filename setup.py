@@ -24,7 +24,7 @@ setup(
     url='https://github.com/evolbioinfo/cytopast',
     keywords=['PASTML', 'visualisation', 'phylogeny'],
     install_requires=['ete3', 'pandas', 'numpy', 'jinja2', 'pastml>=0.5'],
-    requires=['ete3', 'pandas', 'numpy', 'jinja2', 'pastml>=0.5'],
+    # requires=['ete3', 'pandas', 'numpy', 'jinja2', 'pastml>=0.5'],
     entry_points={
             'console_scripts': [
                 'cytopast = cytopast.pastml_analyser:main',
