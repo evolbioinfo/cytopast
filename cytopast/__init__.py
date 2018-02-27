@@ -7,8 +7,6 @@ import numpy as np
 import pandas as pd
 from ete3 import Tree, TreeNode
 
-from cytopast.stdout_redirector import HideOutput
-
 REASONABLE_NUMBER_OF_TIPS = 12
 
 CATEGORIES = 'categories'
@@ -306,7 +304,7 @@ def remove_mediators(tree, get_states):
             continue
         parent_states = get_states(parent)
         child = n.children[0]
-        if states == set(parent_states) | set(get_states(child)):
+        if set(states) == set(parent_states) | set(get_states(child)):
             old_max_tips = getattr(parent, MAX_NUM_TIPS_INSIDE, 0)
             old_min_tips = getattr(parent, MIN_NUM_TIPS_INSIDE, 0)
 
