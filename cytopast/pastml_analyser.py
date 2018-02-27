@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from cytopast import compress_tree, read_tree, \
-    pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree, HideOutput
+    pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree
 from cytopast.colour_generator import get_enough_colours, WHITE
 from cytopast.cytoscape_manager import save_as_cytoscape_html
 
@@ -49,12 +49,8 @@ def _work(args):
 
     hide_warnings = logging.getLogger().getEffectiveLevel() >= logging.ERROR
     try:
-        if hide_warnings:
-            with HideOutput():
-                pastml.infer_ancestral_states(state_file, os.path.abspath(tree), res_file, res_tree,
-                                              model)
-        else:
-            pastml.infer_ancestral_states(state_file, os.path.abspath(tree), res_file, res_tree, model)
+        pastml.infer_ancestral_states(state_file, os.path.abspath(tree), res_file, res_tree, model,
+                                      1 if hide_warnings else 0)
     except:
         logging.error("PASTML could not infer states for {}, so we'll keep the tip states only.".format(category))
         return column, None
@@ -64,13 +60,6 @@ def _work(args):
         os.remove(res_tree)
     except:
         pass
-
-    df = pd.read_table(res_file, sep=', ', header=0, index_col=0, engine='python').astype(bool)
-
-    # Replace missing data for tip columns (all False) with any state being possible (all True)
-    df[(df == False).all(axis=1)] = True
-
-    df.to_csv(res_file, sep=',', index=True)
     return column, res_file
 
 
@@ -91,14 +80,14 @@ def _do_nothing(args):
     os.makedirs(res_dir, exist_ok=True)
 
     res_df = pd.DataFrame(index=[str(n.name) for n in read_tree(tree).traverse()], columns=states)
-    res_df.fillna(value=True, inplace=True)
+    res_df.fillna(value=1, inplace=True)
     df.index = df.index.map(str)
     df = df.filter(res_df.index, axis=0)
 
     for state in states:
-        res_df.loc[df[df == state].index.tolist(), res_df.columns[res_df.columns != state]] = False
+        res_df.loc[df[df == state].index.tolist(), res_df.columns[res_df.columns != state]] = 0
 
-    res_df.astype(bool).to_csv(res_file, sep=',', index=True)
+    res_df.to_csv(res_file, sep=',', index=True)
     return column, res_file
 
 
@@ -152,7 +141,7 @@ def get_ancestral_states_for_all_columns(tree, df, columns, work_dir, res_annota
     logging.info('Combining the data from different columns...')
     pasml_annotations2cytoscape_annotation(col2annotation_files, res_annotations, sep=sep)
     if len(col2annotation_files) == 1:
-        df = pd.read_table(list(col2annotation_files.values())[0], sep=',', index_col=0, header=0)
+        df = pd.read_table(list(col2annotation_files.values())[0], sep=',', index_col=0, header=0).astype(bool)
         comb_df = pd.read_table(res_annotations, sep=sep, index_col=0, header=0)
         if set(df.columns) & set(comb_df.columns):
             df = df.join(comb_df, lsuffix='category', rsuffix='')

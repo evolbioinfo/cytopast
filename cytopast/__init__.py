@@ -50,7 +50,7 @@ def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
         states = df.columns[row]
         return None if len(states) != 1 else states[0]
 
-    cat2df = {cat: pd.read_table(data_path, sep=',', index_col=0, header=0) for (cat, data_path) in
+    cat2df = {cat: pd.read_table(data_path, sep=',', index_col=0, header=0).astype(bool) for (cat, data_path) in
               cat2file.items()}
     df = pd.DataFrame(index=next(iter(cat2df.values())).index, columns=cat2df.keys())
     for cat, cat_df in cat2df.items():
