@@ -9,6 +9,6 @@ STATES_INPUT = os.path.join(DATA_DIR, 'Annotation.Albanian.5chars.txt')
 if '__main__' == __name__:
     for model in ('F81', 'JC'):
         pastml_pipeline(data=STATES_INPUT, tree=TREE_NWK,
-                        html_compressed=os.path.join(DATA_DIR, 'map_{}.html'.format(model)),
-                        html=os.path.join(DATA_DIR, 'tree_{}.html'.format(model)),
-                        data_sep=',', model=model)
+                        html_compressed=os.path.join(DATA_DIR, 'maps', 'map_{}.html'.format(model)),
+                        html=os.path.join(DATA_DIR, 'trees', 'tree_{}.html'.format(model)),
+                        data_sep=',', model=model, verbose=True)
