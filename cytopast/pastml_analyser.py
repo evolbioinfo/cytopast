@@ -274,10 +274,10 @@ def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='
 
     if one_column:
         n2tooltip = lambda n, cats: ', '.join('{}'.format(_) for _ in cats
-                                              if hasattr(n, _) and bool(getattr(n, _, False)))
+                                              if hasattr(n, _) and getattr(n, _, '') != '')
     else:
         n2tooltip = lambda n, cats: \
-            ', '.join('{}:{}'.format(_, getattr(n, _)) for _ in cats if hasattr(n, _) and bool(getattr(n, _, False)))
+            ', '.join('{}:{}'.format(_, getattr(n, _)) for _ in cats if hasattr(n, _) and getattr(n, _, '') != '')
 
     if html:
         save_as_cytoscape_html(tree, html, categories=categories, name2colour=name2colour, n2tooltip=n2tooltip,
