@@ -71,7 +71,7 @@ def annotate_tree_with_cyto_metadata(tree, data_path, sep='\t', one_state=False)
             n.add_features(**df.loc[n.name, :].to_dict())
         else:
             data = df.loc[n.name, :]
-            data = data[data != '']
+            data = data[data != False]
             n.add_features(**data.to_dict())
     return tree, sorted(df.columns)
 

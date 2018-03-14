@@ -42,8 +42,13 @@ def _work(args):
     # Keep only records corresponding to the tips in the state file
     names = df.index.astype(np.str)
     df = df[np.in1d(names, [n.name for n in read_tree(tree).iter_leaves()])]
+    percentage_unknown = df.isnull().sum() / len(df)
+    if percentage_unknown > .9:
+        raise ValueError('%.1f%% of tip annotations for %s are unknown, not enough data to infer ancestral states. '
+                         'Check your annotation file and if its id column corresponds to the tree tip names.'
+                         % (percentage_unknown * 100, column))
     # Prepare the state file for PASTML
-    df.to_csv(state_file, index=True, header=False)
+    df.to_csv(state_file, index=True, header=False, encoding='ascii')
 
     res_tree = os.path.join(res_dir, 'temp.tree.pastml.{tree}.{category}.nwk').format(tree=tree_name, category=category)
 
