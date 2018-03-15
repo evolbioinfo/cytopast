@@ -45,6 +45,8 @@ def name_tree(tree):
 
 
 def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
+    logging.info('Combining the data from different columns...')
+
     def get_state(name, df):
         row = df.loc[name, :]
         states = df.columns[row]
@@ -56,6 +58,11 @@ def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
     for cat, cat_df in cat2df.items():
         cat_df.index = cat_df.index.map(str)
         df[cat] = df.index.map(lambda name: get_state(name, cat_df))
+
+    if len(cat2df) == 1:
+        cat_df = next(iter(cat2df.values()))
+        rsuffix = 'category' if set(df.columns) & set(cat_df.columns) else ''
+        df = df.join(cat_df, rsuffix=rsuffix, lsuffix='')
 
     df.to_csv(output, sep=sep, index_label='Node')
 

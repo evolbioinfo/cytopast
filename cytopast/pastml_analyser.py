@@ -143,16 +143,7 @@ def get_ancestral_states_for_all_columns(tree, df, columns, work_dir, res_annota
 
     col2annotation_files = {col_name2cat(col): af for (col, af) in col2annotation_files.items()}
 
-    logging.info('Combining the data from different columns...')
     pasml_annotations2cytoscape_annotation(col2annotation_files, res_annotations, sep=sep)
-    if len(col2annotation_files) == 1:
-        df = pd.read_table(list(col2annotation_files.values())[0], sep=',', index_col=0, header=0).astype(bool)
-        comb_df = pd.read_table(res_annotations, sep=sep, index_col=0, header=0)
-        if set(df.columns) & set(comb_df.columns):
-            df = df.join(comb_df, lsuffix='category', rsuffix='')
-        else:
-            df = df.join(comb_df)
-        df.to_csv(res_annotations, sep=sep)
 
 
 def quote(str_list):
