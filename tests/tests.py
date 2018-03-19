@@ -5,8 +5,10 @@ import os
 from cytopast import pasml_annotations2cytoscape_annotation
 from cytopast.pastml_analyser import _past_vis
 
-DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
-TREE_NWK = os.path.join(DATA_DIR, 'tree.nwk')
+# DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
+# TREE_NWK = os.path.join(DATA_DIR, 'tree.nwk')
+DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'examples', 'HIV-1C', 'data')
+TREE_NWK = os.path.join(DATA_DIR, 'collen_tree.nwk')
 
 
 def visualise(tree, res_data, html_compressed, html=None, name=None):
@@ -20,7 +22,8 @@ def visualise(tree, res_data, html_compressed, html=None, name=None):
 if '__main__' == __name__:
     logging.basicConfig(level=logging.INFO)
 
-    for state_file in glob.glob(os.path.join(DATA_DIR, 'state_Location.csv.pastml.out*')):
-        name = state_file.replace(os.path.join(DATA_DIR, 'state_Location.csv.pastml.out.'), '')
+    for state_file in glob.glob(os.path.join(DATA_DIR, 'state_Location.csv.F81.*.pastml.out.csv')):
+        name = state_file.replace(os.path.join(DATA_DIR, 'state_Location.csv.F81.'), '').replace('.pastml.out.csv', '')
+        print('Processing {}'.format(name))
         visualise(TREE_NWK, state_file, html_compressed=os.path.join(DATA_DIR, 'map_{}.html'.format(name)), 
                   html=os.path.join(DATA_DIR, 'tree_{}.html'.format(name)), name=name)
