@@ -228,6 +228,9 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
         missing_value_df = pd.DataFrame(index=node_names, columns=df.columns)
         df = df.append(missing_value_df)
     name_tree(root)
+    # this is expected by PASTML
+    root.name = 'ROOT'
+    root.dist = 0
     root.write(outfile=new_tree, format=3, format_root_node=True)
 
     get_ancestral_states_for_all_columns(tree=new_tree, df=df, columns=columns, work_dir=work_dir,

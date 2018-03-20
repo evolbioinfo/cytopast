@@ -3,7 +3,7 @@ import colorsys
 NUM2COLOURS = {
     1: ['#fdc086'],
     2: ['#b2df8a', '#1f78b4'],
-    3: ['#8dd3c7', '#ffffb3', '#bebada'],
+    3: ['#1b9e77', '#d95f02', '#7570b3'],
     4: ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3'],
     5: ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00'],
     6: ['#7fc97f', '#beaed4', '#fdc086', '#ffff99', '#386cb0', '#f0027f'],

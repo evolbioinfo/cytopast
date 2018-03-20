@@ -111,8 +111,8 @@ def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feat
                            name2colour=None, add_fake_nodes=True,
                            n2tooltip=lambda n, categories: ', '.join(get_states(n, categories)),
                            sort_key=lambda n, name_feature, node2tooltip:
-                           (node2tooltip[n], -getattr(n, SIZE, 0),
-                            str(getattr(n, name_feature, n.name) if name_feature else n.name))):
+                           (getattr(n, name_feature, '') if name_feature else '', node2tooltip[n],
+                            -getattr(n, SIZE, 0), n.name)):
     """
     Converts a tree to an html representation using Cytoscape.js.
 
