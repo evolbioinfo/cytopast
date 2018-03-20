@@ -1,6 +1,7 @@
 import logging
 import os
 import pastml
+from pastml import JOINT, MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JC, F81
 import shutil
 import tempfile
 from multiprocessing.pool import ThreadPool
@@ -13,14 +14,15 @@ from cytopast import compress_tree, read_tree, \
 from cytopast.colour_generator import get_enough_colours, WHITE
 from cytopast.cytoscape_manager import save_as_cytoscape_html
 
-STATES_TAB_PASTML_OUTPUT = 'Result.tree_{tree}.category_{category}.txt'
+STATES_TAB_PASTML_OUTPUT = 'Result.tree_{tree}.category_{category}.csv'
+PARAM_TAB_PASTML_OUTPUT = 'Result.tree_{tree}.category_{category}.params.csv'
 
 
 def _work(args):
-    tree, df, work_dir, column, model, cache = args
+    tree, df, work_dir, column, model, prob_method = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
-    res_dir = os.path.abspath(os.path.join(work_dir, category, model))
+    res_dir = os.path.abspath(os.path.join(work_dir, category, model, prob_method))
 
     # For binary states make sure that 0 or false is not mistaken by missing data
     if len(df.unique()) == 2 and np.any(pd.isnull(df.unique())):
@@ -34,8 +36,7 @@ def _work(args):
     logging.info('States are {}'.format(unique_states))
     tree_name = os.path.splitext(os.path.basename(tree))[0]
     res_file = os.path.join(res_dir, STATES_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
-    if cache and os.path.exists(res_file):
-        return column, res_file
+    param_file = os.path.join(res_dir, PARAM_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
     os.makedirs(res_dir, exist_ok=True)
     state_file = os.path.join(res_dir, 'state_{}.csv'.format(category))
 
@@ -54,8 +55,8 @@ def _work(args):
 
     hide_warnings = logging.getLogger().getEffectiveLevel() >= logging.ERROR
     try:
-        pastml.infer_ancestral_states(state_file, os.path.abspath(tree), res_file, res_tree, model,
-                                      1 if hide_warnings else 0)
+        pastml.infer_ancestral_states(state_file, os.path.abspath(tree), res_file, res_tree, param_file,
+                                      model, prob_method, 1 if hide_warnings else 0)
     except:
         logging.error("PASTML could not infer states for {}, so we'll keep the tip states only.".format(category))
         return column, None
@@ -69,7 +70,7 @@ def _work(args):
 
 
 def _do_nothing(args):
-    tree, df, work_dir, column, model, cache = args
+    tree, df, work_dir, column, model, prob_method = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
 
@@ -77,11 +78,8 @@ def _do_nothing(args):
     logging.info('States are {}'.format(states))
 
     tree_name = os.path.splitext(os.path.basename(tree))[0]
-    res_dir = os.path.abspath(os.path.join(work_dir, category, model))
+    res_dir = os.path.abspath(os.path.join(work_dir, category, model, prob_method))
     res_file = os.path.join(res_dir, STATES_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
-
-    if cache and os.path.exists(res_file):
-        return column, res_file
     os.makedirs(res_dir, exist_ok=True)
 
     res_df = pd.DataFrame(index=[str(n.name) for n in read_tree(tree).traverse()], columns=states)
@@ -106,15 +104,16 @@ def col_name2cat(column):
     return column_string
 
 
-def get_ancestral_states_for_all_columns(tree, df, columns, work_dir, res_annotations, sep='\t', model='JC',
-                                         copy_columns=None, cache=False):
+def get_ancestral_states_for_all_columns(tree, df, columns, work_dir, res_annotations, sep='\t', model=JC,
+                                         copy_columns=None, prediction_method=MARGINAL_APPROXIMATION):
     """
     Creates a table with node states by applying PASTML to infer ancestral states for categories specified in columns,
     and copying the states from copy_columns.
-    :param cache: bool, if True the results of previous PASTML runs on this data will be reused when possible.
+    :param prediction_method: str (optional, default is pastml.MARGINAL_APPROXIMATION),
+    ancestral state prediction method to be used by PASTML.
     :param columns: list of columns to be processed with PASTML.
     :param copy_columns: list of columns to be copied as-is.
-    :param model: str (optional, default is 'JC'), model to be used by PASTML.
+    :param model: str (optional, default is pastml.JC), model to be used by PASTML.
     :param tree: str, path to the tree in newick format.
     :param df: pandas.DataFrame containing tree tip names as indices and categories as columns.
     :param work_dir: str, path to the working dir where PASTML can place its temporary files.
@@ -123,11 +122,11 @@ def get_ancestral_states_for_all_columns(tree, df, columns, work_dir, res_annota
     By default is set to tab, i.e. for tab file. Set it to ',' for csv.
     :return: void
     """
-    col2annotation_files = []
+    col2annotation_files = {}
     if columns is not None and len(columns):
         with ThreadPool() as pool:
             col2annotation_files = \
-                dict(pool.map(func=_work, iterable=((tree, df[column], work_dir, column, model, cache)
+                dict(pool.map(func=_work, iterable=((tree, df[column], work_dir, column, model, prediction_method)
                                                     for column in columns)))
     if copy_columns is None:
         copy_columns = []
@@ -138,7 +137,7 @@ def get_ancestral_states_for_all_columns(tree, df, columns, work_dir, res_annota
     if copy_columns:
         with ThreadPool() as pool:
             col2annotation_files.update(
-                dict(pool.map(func=_do_nothing, iterable=((tree, df[column], work_dir, column, model, cache)
+                dict(pool.map(func=_do_nothing, iterable=((tree, df[column], work_dir, column, model, prediction_method)
                                                           for column in copy_columns))))
 
     col2annotation_files = {col_name2cat(col): af for (col, af) in col2annotation_files.items()}
@@ -151,14 +150,11 @@ def quote(str_list):
 
 
 def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, data_sep='\t', id_index=0, columns=None,
-                    name_column=None, work_dir=None, all=False, model='JC', copy_columns=None,
-                    verbose=False, cache=False):
+                    name_column=None, work_dir=None, all=False, model=JC, prediction_method=MARGINAL_APPROXIMATION,
+                    copy_columns=None, verbose=False):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
-    :param copy_columns: list of str (optional), names of the data table columns that contain states to be copied as-is,
-    without applying PASTML (the missing states will stay unresolved).
-    :param cache: bool, if True the results of previous PASTML runs on this data will be reused when possible.
-    :param verbose: bool, print information on the progress of the analysis.
+
     :param out_data: str, path to the output annotation file with the states inferred by PASTML.
     :param tree: str, path to the input tree in newick format.
     :param data: str, path to the annotation file in tab/csv format with the first row containing the column names.
@@ -170,13 +166,18 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     that contains the tree tip names, indices start from zero.
     :param columns: list of str (optional), names of the data table columns that contain states
     to be analysed with PASTML, if not specified all columns will be considered.
+    :param copy_columns: list of str (optional), names of the data table columns that contain states to be copied as-is,
+    without applying PASTML (the missing states will stay unresolved).
     :param name_column: str (optional), name of the data table column to be used for node names in the visualisation
     (must be one of those specified in columns, if columns are specified). If the data table contains only one column,
     it will be used by default.
     :param work_dir: str (optional), path to the working dir for PASTML
     (if not specified a temporary dir will be created).
     :param all: bool (optional, by default is False), if to keep all the nodes in the map, even the minor ones.
-    :param model: str (optional, default is 'JC'), model to be used by PASTML.
+    :param model: str (optional, default is pastml.JC), model to be used by PASTML.
+    :param prediction_method: str (optional, default is pastml.MARGINAL_APPROXIMATION),
+    ancestral state prediction method to be used by PASTML.
+    :param verbose: bool, print information on the progress of the analysis.
     :return: void
     """
     logging.basicConfig(level=logging.INFO if verbose else logging.ERROR,
@@ -202,7 +203,12 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
                                  quote(df.columns)))
 
     if not columns and not copy_columns:
-        columns = df.columns
+        columns = list(df.columns)
+
+    if not columns and not copy_columns:
+        raise ValueError('Could not find any states in the annotation file {}. '
+                         'Make sure that the file separator (--data_sep {}) is set correctly.'
+                         .format(data, data_sep))
 
     if name_column and (not columns or name_column not in columns) \
             and (not copy_columns or name_column not in copy_columns):
@@ -215,21 +221,19 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
         os.path.join(work_dir, 'combined_annotations_{}_{}_{}.tab'.format('_'.join(columns), model, tree_name))
 
     new_tree = os.path.join(work_dir, tree_name + '.pastml.nwk')
-    if not cache or not os.path.exists(new_tree):
-        root = read_tree(tree)
-        names = df.index.astype(np.str)
-        node_names = [n.name for n in root.iter_leaves() if n.name not in names]
-        if node_names:
-            missing_value_df = pd.DataFrame(index=node_names, columns=df.columns)
-            df = df.append(missing_value_df)
-        name_tree(root)
-        root.write(outfile=new_tree, format=3, format_root_node=True)
-    else:
-        root = read_tree(new_tree)
+    root = read_tree(tree)
+    names = df.index.astype(np.str)
+    node_names = [n.name for n in root.iter_leaves() if n.name not in names]
+    if node_names:
+        missing_value_df = pd.DataFrame(index=node_names, columns=df.columns)
+        df = df.append(missing_value_df)
+    name_tree(root)
+    root.write(outfile=new_tree, format=3, format_root_node=True)
 
     get_ancestral_states_for_all_columns(tree=new_tree, df=df, columns=columns, work_dir=work_dir,
                                          res_annotations=res_annotations,
-                                         sep=data_sep, model=model, copy_columns=copy_columns, cache=cache)
+                                         sep=data_sep, model=model, copy_columns=copy_columns,
+                                         prediction_method=prediction_method)
 
     _past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
               columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column, all=all)
@@ -318,14 +322,15 @@ def main():
     tree_group.add_argument('-t', '--tree', help="the input tree in newick format.", type=str, required=True)
 
     pastml_group = parser.add_argument_group('ancestral-state inference-related arguments')
-    pastml_group.add_argument('-m', '--model', required=False, default='JC', type=str,
-                              help="the evolutionary model to be used by PASTML (can be JC or F81).")
+    pastml_group.add_argument('-m', '--model', required=False, default=JC, choices=[JC, F81], type=str,
+                              help='the evolutionary model to be used by PASTML, by default {}.'.format(JC))
+    pastml_group.add_argument('--prediction_method', required=False, default=MARGINAL_APPROXIMATION,
+                              choices=[MARGINAL_APPROXIMATION, MARGINAL, MAX_POSTERIORI, JOINT], type=str,
+                              help='the ancestral state prediction method to be used by PASTML, '
+                                   'by default {}.'.format(MARGINAL_APPROXIMATION))
     pastml_group.add_argument('--work_dir', required=False, default=None, type=str,
                               help="the working dir for PASTML to put intermediate files into "
                                    "(if not specified a temporary dir will be created).")
-    pastml_group.add_argument('--cache', action='store_true',
-                              help="if set, the results of previous PASTML runs on this data will be reused "
-                                   "when possible")
 
     vis_group = parser.add_argument_group('visualisation-related arguments')
     vis_group.add_argument('-n', '--name_column', type=str, default=None,

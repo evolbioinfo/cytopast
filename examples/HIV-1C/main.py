@@ -1,4 +1,5 @@
 import os
+from pastml import JC, F81
 
 from cytopast.pastml_analyser import pastml_pipeline
 
@@ -8,7 +9,7 @@ STATES_INPUT = os.path.join(DATA_DIR, 'data.tab')
 
 if '__main__' == __name__:
     columns = [' Region ', 'Location', 'RT:M184V', 'RT:K103N']
-    for model in ('F81', 'JC'):
+    for model in (F81, JC):
             print('Processing model {}'.format(model))
             pastml_pipeline(data=STATES_INPUT, tree=TREE,
                             columns=columns,
