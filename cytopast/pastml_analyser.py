@@ -33,8 +33,6 @@ def _work(args):
                   else 'other' if state != 'other' else 'unknown')
         df.replace(np.nan, other_state, inplace=True)
 
-    df = df.map(str)
-
     unique_states = [s for s in df.unique() if not pd.isnull(s)]
     logging.info('States are {}'.format(unique_states))
     tree_name = os.path.splitext(os.path.basename(tree))[0]
@@ -84,8 +82,6 @@ def _do_nothing(args):
             else (0 if isinstance(state, (int, float, complex)) and state != 0
                   else 'other' if state != 'other' else 'unknown')
         df.replace(np.nan, other_state, inplace=True)
-
-    df = df.map(str)
 
     states = [s for s in df.unique() if not pd.isnull(s)]
     logging.info('States are {}'.format(states))
