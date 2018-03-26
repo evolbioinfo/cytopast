@@ -92,12 +92,12 @@ def _do_nothing(args):
     os.makedirs(res_dir, exist_ok=True)
 
     res_df = pd.DataFrame(index=[str(n.name) for n in read_tree(tree).traverse()], columns=states)
-    res_df.fillna(value=1, inplace=True)
+    res_df.fillna(value=0, inplace=True)
     df.index = df.index.map(str)
     df = df.filter(res_df.index, axis=0)
 
     for state in states:
-        res_df.loc[df[df == state].index.tolist(), res_df.columns[res_df.columns != state]] = 0
+        res_df.loc[df[df == state].index.tolist(), state] = 1
 
     res_df.to_csv(res_file, sep=',', index=True)
     return column, res_file

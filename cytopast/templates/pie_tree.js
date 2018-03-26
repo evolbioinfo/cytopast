@@ -83,7 +83,7 @@ cy.on('mouseover', 'node', function(event) {
     }
 });
 
+
 function to_image(){
-    document.getElementById("downloader").download = "{{title}}.png";
-    document.getElementById("downloader").href = cy.png({ full: true }).replace(/^data:image\/[^;]/, 'data:application/octet-stream');
+    document.getElementById("downloader").href = cy.png({ full: false }).replace(/^data:image\/[^;]/, 'data:application/octet-stream');
 }
