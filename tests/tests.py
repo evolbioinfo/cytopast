@@ -15,9 +15,16 @@ if '__main__' == __name__:
     for model in (F81, JC):
         for pred_method in (MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JOINT):
             pastml_pipeline(data=DATA_TAB, tree=TREE_NWK, columns=['Location'],
-                            html_compressed=os.path.join(DATA_DIR, 'map_{}_{}.html'.
+                            html_compressed=os.path.join(DATA_DIR, 'maps', 'map_{}_{}.html'.
                                                          format(model, pred_method)),
-                            html=os.path.join(DATA_DIR, 'tree_{}_{}.html'.
+                            html=os.path.join(DATA_DIR, 'trees', 'tree_{}_{}.html'.
                                               format(model, pred_method)),
                             model=model, prediction_method=pred_method, work_dir=os.path.join(DATA_DIR, 'pastml'),
                             verbose=True)
+
+    for pred_method in (DOWNPASS, ACCTRAN, DELTRAN):
+        pastml_pipeline(data=DATA_TAB, tree=TREE_NWK, columns=['Location'],
+                        html_compressed=os.path.join(DATA_DIR, 'maps', 'map_{}.html'.format(pred_method)),
+                        html=os.path.join(DATA_DIR, 'trees', 'tree_{}.html'.format(pred_method)),
+                        prediction_method=pred_method, work_dir=os.path.join(DATA_DIR, 'pastml'),
+                        verbose=True)

@@ -71,7 +71,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_k
                                       'color': DEFAULT_EDGE_COLOR}))
         features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
         features[ID] = n_id
-        features[NAME] = str(getattr(n, name_feature, '') if name_feature else '')
+        features[NAME] = str(getattr(n, name_feature, '') if name_feature is not None else '')
         if SIZE not in n.features:
             features[SIZE] = DEFAULT_SIZE
         if FONT_SIZE not in n.features:

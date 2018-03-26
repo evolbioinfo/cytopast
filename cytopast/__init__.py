@@ -44,8 +44,20 @@ def name_tree(tree):
     return i > 0
 
 
+def collapse_zero_branches(tree):
+    num_collapsed = 0
+    for n in list(tree.traverse('postorder')):
+        for child in list(n.children):
+            if not child.is_leaf() and child.dist == 0:
+                n.remove_child(child)
+                for grandchild in child.children:
+                    n.add_child(grandchild)
+                num_collapsed += 1
+    logging.info('Collapsed {} zero branches.'.format(num_collapsed))
+
+
 def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
-    logging.info('Combining the data from different columns...')
+    logging.info('Combining the data from different columns into {}'.format(output))
 
     def get_state(name, df):
         row = df.loc[name, :]
@@ -67,20 +79,32 @@ def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
     df.to_csv(output, sep=sep, index_label='Node')
 
 
-def annotate_tree_with_cyto_metadata(tree, data_path, sep='\t', one_state=False):
+def annotate_tree_with_cyto_metadata(tree, data_path, columns, sep='\t'):
     df = pd.read_table(data_path, sep=sep, index_col=0, header=0)
     df.index = df.index.map(str)
     df.fillna('', inplace=True)
     tree = read_tree(tree) if not isinstance(tree, TreeNode) else tree
 
     for n in tree.traverse():
-        if not one_state:
+        if len(columns) != 1:
             n.add_features(**df.loc[n.name, :].to_dict())
         else:
+            category = col_name2cat(columns[0])
             data = df.loc[n.name, :]
-            data = data[data != False]
-            n.add_features(**data.to_dict())
+            n.add_features(**data[data != False].to_dict())
+            # In case category's value was also False (and therefore was not added), let's add it again
+            n.add_feature(category, data[category])
     return tree, sorted(df.columns)
+
+
+def col_name2cat(column):
+    """
+    Reformats the column string to make sure it contains only numerical or letter characters.
+    :param column: str, column name to be reformatted
+    :return: str, the column name with illegal characters removed
+    """
+    column_string = ''.join(s for s in column if s.isalnum())
+    return column_string
 
 
 def read_tree(tree_path):

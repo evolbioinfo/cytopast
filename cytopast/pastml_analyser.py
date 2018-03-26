@@ -1,7 +1,7 @@
 import logging
 import os
 import pastml
-from pastml import JOINT, MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JC, F81
+from pastml import JOINT, MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JC, F81, DOWNPASS, ACCTRAN, DELTRAN
 import shutil
 import tempfile
 from multiprocessing.pool import ThreadPool
@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 
 from cytopast import compress_tree, read_tree, \
-    pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree
+    pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree, collapse_zero_branches, \
+    col_name2cat
 from cytopast.colour_generator import get_enough_colours, WHITE
 from cytopast.cytoscape_manager import save_as_cytoscape_html
 
@@ -31,6 +32,8 @@ def _work(args):
             else (0 if isinstance(state, (int, float, complex)) and state != 0
                   else 'other' if state != 'other' else 'unknown')
         df.replace(np.nan, other_state, inplace=True)
+
+    df = df.map(str)
 
     unique_states = [s for s in df.unique() if not pd.isnull(s)]
     logging.info('States are {}'.format(unique_states))
@@ -70,15 +73,25 @@ def _work(args):
 
 
 def _do_nothing(args):
-    tree, df, work_dir, column, model, prob_method = args
+    tree, df, work_dir, column = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
+
+    # For binary states make sure that 0 or false is not mistaken by missing data
+    if len(df.unique()) == 2 and np.any(pd.isnull(df.unique())):
+        state = df.unique()[~pd.isnull(df.unique())][0]
+        other_state = not state if isinstance(state, bool) \
+            else (0 if isinstance(state, (int, float, complex)) and state != 0
+                  else 'other' if state != 'other' else 'unknown')
+        df.replace(np.nan, other_state, inplace=True)
+
+    df = df.map(str)
 
     states = [s for s in df.unique() if not pd.isnull(s)]
     logging.info('States are {}'.format(states))
 
     tree_name = os.path.splitext(os.path.basename(tree))[0]
-    res_dir = os.path.abspath(os.path.join(work_dir, category, model, prob_method))
+    res_dir = os.path.abspath(os.path.join(work_dir, category, 'copy'))
     res_file = os.path.join(res_dir, STATES_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
     os.makedirs(res_dir, exist_ok=True)
 
@@ -92,16 +105,6 @@ def _do_nothing(args):
 
     res_df.to_csv(res_file, sep=',', index=True)
     return column, res_file
-
-
-def col_name2cat(column):
-    """
-    Reformats the column string to make sure it contains only numerical or letter characters.
-    :param column: str, column name to be reformatted
-    :return: str, the column name with illegal characters removed
-    """
-    column_string = ''.join(s for s in column if s.isalnum())
-    return column_string
 
 
 def get_ancestral_states_for_all_columns(tree, df, columns, work_dir, res_annotations, sep='\t', model=JC,
@@ -137,7 +140,7 @@ def get_ancestral_states_for_all_columns(tree, df, columns, work_dir, res_annota
     if copy_columns:
         with ThreadPool() as pool:
             col2annotation_files.update(
-                dict(pool.map(func=_do_nothing, iterable=((tree, df[column], work_dir, column, model, prediction_method)
+                dict(pool.map(func=_do_nothing, iterable=((tree, df[column], work_dir, column)
                                                           for column in copy_columns))))
 
     col2annotation_files = {col_name2cat(col): af for (col, af) in col2annotation_files.items()}
@@ -191,10 +194,14 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     else:
         os.makedirs(work_dir, exist_ok=True)
 
+    if not copy_columns:
+        copy_columns = []
+    if not columns:
+        columns = []
+
     df = pd.read_table(data, sep=data_sep, index_col=id_index, header=0)
 
-    unknown_columns = ((set(columns) if columns else set())
-                       | (set(copy_columns) if copy_columns else set())) - set(df.columns)
+    unknown_columns = (set(columns) | set(copy_columns)) - set(df.columns)
     if unknown_columns:
         raise ValueError('{} of the specified columns ({}) {} not found among the annotation columns: {}.'
                          .format('One' if len(unknown_columns) == 1 else 'Some',
@@ -210,15 +217,15 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
                          'Make sure that the file separator (--data_sep {}) is set correctly.'
                          .format(data, data_sep))
 
-    if name_column and (not columns or name_column not in columns) \
-            and (not copy_columns or name_column not in copy_columns):
+    if name_column and (name_column not in columns) and (name_column not in copy_columns):
         raise ValueError('The name column ({}) should be one of those specified as columns ({}) or copy_columns ({}).'
                          .format(quote([name_column]), quote(columns), quote(copy_columns)))
 
     tree_name = os.path.basename(tree)
 
     res_annotations = out_data if out_data else \
-        os.path.join(work_dir, 'combined_annotations_{}_{}_{}.tab'.format('_'.join(columns), model, tree_name))
+        os.path.join(work_dir, 'combined_annotations_{}_{}_{}_{}.tab'
+                     .format('_'.join(columns + copy_columns), model, prediction_method, tree_name))
 
     new_tree = os.path.join(work_dir, tree_name + '.pastml.nwk')
     root = read_tree(tree)
@@ -228,6 +235,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
         missing_value_df = pd.DataFrame(index=node_names, columns=df.columns)
         df = df.append(missing_value_df)
     name_tree(root)
+    collapse_zero_branches(root)
     # this is expected by PASTML
     root.name = 'ROOT'
     root.dist = 0
@@ -248,7 +256,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
 def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\t', columns=None, name_column=None,
               all=False):
     one_column = len(columns) == 1
-    tree, categories = annotate_tree_with_cyto_metadata(tree, res_annotations, sep=data_sep, one_state=one_column)
+    tree, categories = annotate_tree_with_cyto_metadata(tree, res_annotations, columns=columns, sep=data_sep)
 
     if not name_column and one_column:
         name_column = columns[0]
@@ -328,7 +336,8 @@ def main():
     pastml_group.add_argument('-m', '--model', required=False, default=JC, choices=[JC, F81], type=str,
                               help='the evolutionary model to be used by PASTML, by default {}.'.format(JC))
     pastml_group.add_argument('--prediction_method', required=False, default=MARGINAL_APPROXIMATION,
-                              choices=[MARGINAL_APPROXIMATION, MARGINAL, MAX_POSTERIORI, JOINT], type=str,
+                              choices=[MARGINAL_APPROXIMATION, MARGINAL, MAX_POSTERIORI, JOINT,
+                                       DOWNPASS, ACCTRAN, DELTRAN], type=str,
                               help='the ancestral state prediction method to be used by PASTML, '
                                    'by default {}.'.format(MARGINAL_APPROXIMATION))
     pastml_group.add_argument('--work_dir', required=False, default=None, type=str,

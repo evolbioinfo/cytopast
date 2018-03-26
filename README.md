@@ -64,9 +64,11 @@ docker run -v /path/to/the/folder/containing/the_tree_and_annotations/:/data:rw 
 ```
 usage: cytopast [-h] -d DATA [-s DATA_SEP] [-i ID_INDEX]
                 [-c [COLUMNS [COLUMNS ...]]]
-                [--copy_columns [COPY_COLUMNS [COPY_COLUMNS ...]]] -t TREE
-                [-m MODEL] [--work_dir WORK_DIR] [--cache] [-n NAME_COLUMN]
-                [-a] [-o OUT_DATA] [-p HTML_COMPRESSED] [-l HTML] [-v]
+                [--copy_columns [COPY_COLUMNS [COPY_COLUMNS ...]]]
+                -t TREE [-m {JC,F81}]
+                [--prediction_method {marginal_approx,marginal,max_posteriori,joint,downpass,acctran,deltran}]
+                [--work_dir WORK_DIR] [-n NAME_COLUMN] [-a]
+                [-o OUT_DATA] [-p HTML_COMPRESSED] [-l HTML] [-v]
 
 Visualisation of annotated phylogenetic trees (as html maps).
 
@@ -99,14 +101,15 @@ tree-related arguments:
   -t TREE, --tree TREE  the input tree in newick format.
 
 ancestral-state inference-related arguments:
-  -m MODEL, --model MODEL
-                        the evolutionary model to be used by PASTML (can be JC
-                        or F81).
+  -m {JC,F81}, --model {JC,F81}
+                        the evolutionary model to be used by PASTML, by
+                        default JC.
+  --prediction_method {marginal_approx,marginal,max_posteriori,joint,downpass,acctran,deltran}
+                        the ancestral state prediction method to be used by
+                        PASTML, by default marginal_approx.
   --work_dir WORK_DIR   the working dir for PASTML to put intermediate files
                         into (if not specified a temporary dir will be
                         created).
-  --cache               if set, the results of previous PASTML runs on this
-                        data will be reused when possible
 
 visualisation-related arguments:
   -n NAME_COLUMN, --name_column NAME_COLUMN
