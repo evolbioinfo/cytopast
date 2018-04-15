@@ -49,6 +49,12 @@ def _work(args):
         raise ValueError('%.1f%% of tip annotations for %s are unknown, not enough data to infer ancestral states. '
                          'Check your annotation file and if its id column corresponds to the tree tip names.'
                          % (percentage_unknown * 100, column))
+
+    percentage_unique = df.nunique() / df.count()
+    if df.count() > 100 and percentage_unique > .5:
+        raise ValueError('The column {} seem to contain non-categorical data: {} of values are unique.'
+                         'PASTML cannot infer ancestral states for a tree with too many tip states.'
+                         .format(column, int(100 * percentage_unique)))
     # Prepare the state file for PASTML
     df.to_csv(state_file, index=True, header=False, encoding='ascii')
 
@@ -241,12 +247,19 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
                                          res_annotations=res_annotations,
                                          sep=data_sep, model=model, copy_columns=copy_columns,
                                          prediction_method=prediction_method)
+    # root.prune(root.get_common_ancestor(
+    #     [_ for _ in root if _.name in {'1932', '1624', '1644', '1920', '452', '763', '1647', '1220', '1596', '1254',
+    #                                    '1922', '1643', '1928', '2071', '1620', '1935'}]).get_leaves())
+    # print(root.name)
 
-    _past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
-              columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column, all=all)
+    if html or html_compressed:
+        root = _past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
+                         columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
+                         all=all)
 
     if using_temp_dir:
         shutil.rmtree(work_dir)
+    return root
 
 
 def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\t', columns=None, name_column=None,
@@ -294,8 +307,9 @@ def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='
         tree = compress_tree(tree,
                              categories=([name_column] + categories) if name_column and not one_column else categories,
                              name_feature=name_column, cut=not all)
-        save_as_cytoscape_html(tree, html_compressed, categories,
+        save_as_cytoscape_html(tree, html_compressed, categories=categories,
                                name2colour=name2colour, add_fake_nodes=False, n2tooltip=n2tooltip)
+    return tree
 
 
 def main():

@@ -5,29 +5,36 @@ import os
 
 configfile: "config.yaml"
 localrules: all, tnt
-ruleorder: pastml_drm_loc > pastml_drm > pastml_mult_loc > pastml_loc > date > collapse
+ruleorder: pastml_top_drm_loc > pastml_top_drm > pastml_drm > pastml_mult_loc > pastml_loc > date > collapse
 
 folder = os.path.abspath(config["folder"])
 data_dir = os.path.join(folder, config['data_dir'])
 fasta_in = os.path.join(data_dir, config['fasta'])
 fa = os.path.join(data_dir, 'sequences_renamed.fasta')
 
-ns = [2, 4]
+ns = range(5)
 ms = [100, 200, 300]
 
-#models = ['F81']
+models = ['F81']
 #models = ['JC']
-models = ['JC', 'F81']
+#models = ['JC', 'F81']
 type = 'phyml'
 maps_dir = 'nondated_maps'
 
 rule all:
     input:
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location', '{model}', 'map_{n}_{type}_{model}_Location.html'), n=ns, model=models, type=type),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location', '{model}', 'map_{n}_{type}_{model}_Location.html'), n=ns, model=models, type=type),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_Location_top_{m}_SDRM.html'), n=ns, model=models, type=type, m=range(5)),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_top_{m}_SDRM.html'), n=ns, model=models, type=type, m=range(5)),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_Location.html'), n=ns, model=models, type=type),
 #        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location', '{model}', '{m}', 'map_{n}_{type}_{model}_Location_sampled_{m}.html'), n=ns, model=models, type=type, m=ms),
 #        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_Continent', '{model}', 'map_{n}_{type}_{model}_Location_Continent.html'), n=ns, model=models, type=type),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_2_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_Location_2_top_SDRMS.html'), n=ns, model=models, type=type),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '2_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_2_top_SDRMS.html'), n=ns, model=models, type=type),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_5_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_Location_5_top_SDRMS.html'), n=ns, model=models, type=type),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_1_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_Location_1_top_SDRMS.html'), n=ns, model=models, type=type),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_2_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_Location_2_top_SDRMS.html'), n=ns, model=models, type=type),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', '5_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_5_top_SDRMS.html'), n=ns, model=models, type=type),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', '2_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_2_top_SDRMS.html'), n=ns, model=models, type=type),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', '1_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_1_top_SDRMS.html'), n=ns, model=models, type=type),
 
 #rule drm_data:
 #    '''
@@ -683,6 +690,64 @@ rule pastml_drm_loc:
         """)
 
 
+rule pastml_top_drm_loc:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        data = os.path.join(data_dir, 'data.tab')
+    output:
+        map = os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_{loc}_top_{m}_SDRM.html'),
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        loc = '{loc}',
+        model = '{model}',
+        m = '{m}'
+    run:
+        import pandas as pd
+
+        df = pd.read_table(input.data)
+        sdrm = sorted([col for col in df.columns if 'RT:' in col or 'PR:' in col],
+                               key=lambda drm: len(df[df[drm].isnull()]))[int(params.m)]
+        shell("""
+            source activate pastml
+            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
+            --model {params.model} --columns {sdrm} {params.loc} --name_column {params.loc} -v
+        """)
+
+rule pastml_top_drm:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        data = os.path.join(data_dir, 'data.tab')
+    output:
+        map = os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_top_{m}_SDRM.html'),
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        model = '{model}',
+        m = '{m}'
+    run:
+        import pandas as pd
+
+        df = pd.read_table(input.data)
+        sdrm = sorted([col for col in df.columns if 'RT:' in col or 'PR:' in col],
+                               key=lambda drm: len(df[df[drm].isnull()]))[int(params.m)]
+        shell("""
+            source activate pastml
+            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
+            --model {params.model} --columns {sdrm} -v
+        """)
+
+
 rule pastml_drm:
     '''
     Reconstructs tree ancestral states with PASTML and visualises the result.
@@ -717,7 +782,7 @@ rule pastml_loc:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
         data = os.path.join(data_dir, 'data.tab'),
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', '{loc}', '{model}', 'map_{n}_{type}_{model}_{loc}.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_{loc}.html')
     threads:
         4
     params:
