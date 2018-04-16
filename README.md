@@ -63,14 +63,15 @@ docker run -v /path/to/the/folder/containing/the_tree_and_annotations/:/data:rw 
 
 ```
 usage: cytopast [-h] -d DATA [-s DATA_SEP] [-i ID_INDEX]
-                [-c [COLUMNS [COLUMNS ...]]]
-                [--copy_columns [COPY_COLUMNS [COPY_COLUMNS ...]]]
-                -t TREE [-m {JC,F81}]
-                [--prediction_method {marginal_approx,marginal,max_posteriori,joint,downpass,acctran,deltran}]
-                [--work_dir WORK_DIR] [-n NAME_COLUMN] [-a]
-                [-o OUT_DATA] [-p HTML_COMPRESSED] [-l HTML] [-v]
+                          [-c [COLUMNS [COLUMNS ...]]]
+                          [--copy_columns [COPY_COLUMNS [COPY_COLUMNS ...]]]
+                          -t TREE [-m {JC,F81}]
+                          [--prediction_method {marginal_approx,marginal,max_posteriori,joint,downpass,acctran,deltran}]
+                          [--work_dir WORK_DIR] [-n NAME_COLUMN]
+                          [--tip_size_threshold TIP_SIZE_THRESHOLD]
+                          [-o OUT_DATA] [-p HTML_COMPRESSED] [-l HTML] [-v]
 
-Visualisation of annotated phylogenetic trees (as html maps).
+Ancestral state reconstruction and visualisation of annotated phylogenetic trees (as html maps).
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -118,8 +119,9 @@ visualisation-related arguments:
                         of those specified in columns or copy_columns if they
                         are specified).If the data table contains only one
                         column it will be used by default.
-  -a, --all             Keep all the nodes in the compressed map
-                        visualisation, even the minor ones.
+  --tip_size_threshold TIP_SIZE_THRESHOLD
+                        Remove the tips of size less than the threshold-th
+                        from the compressed map (set to inf to keep all tips).
 
 output-related arguments:
   -o OUT_DATA, --out_data OUT_DATA
