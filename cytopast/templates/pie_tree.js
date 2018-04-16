@@ -85,5 +85,5 @@ cy.on('mouseover', 'node', function(event) {
 
 
 function to_image(){
-    document.getElementById("downloader").href = cy.png({ full: false }).replace(/^data:image\/[^;]/, 'data:application/octet-stream');
+    document.getElementById("downloader").href = cy.jpg({ full: false, quality: 1.0, scale: 2}).replace(/^data:image\/[^;]/, 'data:application/octet-stream');
 }

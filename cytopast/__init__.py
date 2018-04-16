@@ -57,6 +57,44 @@ def collapse_zero_branches(tree):
     logging.info('Collapsed {} zero branches.'.format(num_collapsed))
 
 
+def remove_certain_leaves(tr, to_remove=lambda node: False):
+    """
+    Removes all the branches leading to naive leaves from the given tree.
+    :param tr: the tree of interest (ete3 Tree)
+    [(state_1, 0), (state_2, time_of_transition_from_state_1_to_2), ...]. Branch removals will be added as '!'.
+    :param to_remove: a method to check is a leaf should be removed.
+    :return: the tree with naive branches removed (ete3 Tree) or None is all the leaves were naive in the initial tree.
+    """
+
+    def _merge_node_with_its_child(nd, child=None):
+        if not child:
+            child = nd.children[0]
+        child.dist += nd.dist
+        if nd.is_root():
+            child.up = None
+        else:
+            parent = nd.up
+            parent.remove_child(nd)
+            parent.add_child(child)
+        return child
+
+    for node in tr.traverse("postorder"):
+        # If this node has only one child branch
+        # it means that the other child branch used to lead to a naive leaf and was removed.
+        # We can merge this node with its child
+        # (the child was already processed and either is a leaf or has 2 children).
+        if len(node.children) == 1:
+            merged_node = _merge_node_with_its_child(node)
+            if merged_node.is_root():
+                tr = merged_node
+                break
+        elif node.is_leaf() and to_remove(node):
+            if node.is_root():
+                return None
+            node.up.remove_child(node)
+    return tr
+
+
 def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
     logging.info('Combining the data from different columns into {}'.format(output))
 
@@ -121,7 +159,8 @@ def get_states(n, categories):
     return {cat: getattr(n, cat) for cat in categories if hasattr(n, cat)}
 
 
-def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_feature=None):
+def compress_tree(tree, categories, can_merge_diff_sizes=True, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
+                  name_feature=None):
     for n in tree.traverse():
         if n.is_leaf():
             n.add_feature(MIN_NUM_TIPS_INSIDE, 1)
@@ -153,14 +192,13 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, cut=True, name_fe
         logging.info('Gonna re-collapse horizontally, merging nodes of different sizes')
         collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
 
-    if cut:
-        tip_sizes = [getattr(_, MAX_NUM_TIPS_INSIDE, 0) * getattr(_, EDGE_SIZE, 1) for _ in tree.get_leaves()]
-        if len(tip_sizes) > REASONABLE_NUMBER_OF_TIPS:
-            threshold = sorted(tip_sizes)[-REASONABLE_NUMBER_OF_TIPS]
-            logging.info('Removing tips of size less than {}'.format(threshold))
-            remove_small_tips(tree,
-                              to_be_removed=lambda _: getattr(_, MAX_NUM_TIPS_INSIDE, 0)
-                                                      * getattr(_, EDGE_SIZE, 1) <= threshold)
+    tip_sizes = [getattr(_, MAX_NUM_TIPS_INSIDE, 0) * getattr(_, EDGE_SIZE, 1) for _ in tree.get_leaves()]
+    if len(tip_sizes) > tip_size_threshold:
+        threshold = sorted(tip_sizes)[-tip_size_threshold]
+        logging.info('Removing tips of size less than {}'.format(threshold))
+        remove_small_tips(tree,
+                          to_be_removed=lambda _: getattr(_, MAX_NUM_TIPS_INSIDE, 0)
+                                                  * getattr(_, EDGE_SIZE, 1) <= threshold)
         remove_mediators(tree, lambda _: get_states(_, categories))
 
     logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'

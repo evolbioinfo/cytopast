@@ -1,5 +1,7 @@
 import logging
 import os
+from math import inf
+
 import pastml
 from pastml import JOINT, MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JC, F81, DOWNPASS, ACCTRAN, DELTRAN
 import shutil
@@ -11,7 +13,7 @@ import pandas as pd
 
 from cytopast import compress_tree, read_tree, \
     pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree, collapse_zero_branches, \
-    col_name2cat
+    col_name2cat, REASONABLE_NUMBER_OF_TIPS
 from cytopast.colour_generator import get_enough_colours, WHITE
 from cytopast.cytoscape_manager import save_as_cytoscape_html
 
@@ -155,7 +157,8 @@ def quote(str_list):
 
 
 def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, data_sep='\t', id_index=0, columns=None,
-                    name_column=None, work_dir=None, all=False, model=JC, prediction_method=MARGINAL_APPROXIMATION,
+                    name_column=None, work_dir=None, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
+                    model=JC, prediction_method=MARGINAL_APPROXIMATION,
                     copy_columns=None, verbose=False):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
@@ -178,7 +181,8 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     it will be used by default.
     :param work_dir: str (optional), path to the working dir for PASTML
     (if not specified a temporary dir will be created).
-    :param all: bool (optional, by default is False), if to keep all the nodes in the map, even the minor ones.
+    :param tip_size_threshold: int (optional, by default is 25), remove the tips of size less than threshold-th
+    from the compressed map (set to inf to keep all).
     :param model: str (optional, default is pastml.JC), model to be used by PASTML.
     :param prediction_method: str (optional, default is pastml.MARGINAL_APPROXIMATION),
     ancestral state prediction method to be used by PASTML.
@@ -255,7 +259,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     if html or html_compressed:
         root = _past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
                          columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
-                         all=all)
+                         tip_size_threshold=tip_size_threshold)
 
     if using_temp_dir:
         shutil.rmtree(work_dir)
@@ -263,7 +267,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
 
 
 def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='\t', columns=None, name_column=None,
-              all=False):
+              tip_size_threshold=REASONABLE_NUMBER_OF_TIPS):
     one_column = len(columns) == 1
     tree, categories = annotate_tree_with_cyto_metadata(tree, res_annotations, columns=columns, sep=data_sep)
 
@@ -306,7 +310,7 @@ def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='
     if html_compressed:
         tree = compress_tree(tree,
                              categories=([name_column] + categories) if name_column and not one_column else categories,
-                             name_feature=name_column, cut=not all)
+                             name_feature=name_column, tip_size_threshold=tip_size_threshold)
         save_as_cytoscape_html(tree, html_compressed, categories=categories,
                                name2colour=name2colour, add_fake_nodes=False, n2tooltip=n2tooltip)
     return tree
@@ -360,9 +364,9 @@ def main():
                                 "in the compressed map visualisation"
                                 "(must be one of those specified in columns or copy_columns if they are specified)."
                                 "If the data table contains only one column it will be used by default.")
-    vis_group.add_argument('-a', '--all', action='store_true',
-                           help="Keep all the nodes in the compressed map visualisation, "
-                                "even the minor ones.")
+    vis_group.add_argument('--tip_size_threshold', type=int, default=REASONABLE_NUMBER_OF_TIPS,
+                           help="Remove the tips of size less than the threshold-th from the compressed map "
+                                "(set to inf to keep all tips).")
 
     out_group = parser.add_argument_group('output-related arguments')
     out_group.add_argument('-o', '--out_data', required=False, type=str,
