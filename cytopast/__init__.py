@@ -7,22 +7,66 @@ import numpy as np
 import pandas as pd
 from ete3 import Tree, TreeNode
 
-REASONABLE_NUMBER_OF_TIPS = 25
+DATE = 'date'
+
+REASONABLE_NUMBER_OF_TIPS = 15
 
 CATEGORIES = 'categories'
 
-SIZE = 'size'
-MIN_NUM_TIPS_INSIDE = 'min_size'
+NODE_SIZE = 'node_size'
 MAX_NUM_TIPS_INSIDE = 'max_size'
+NODE_NAME = 'node_name'
 
 TIPS_INSIDE = 'tips'
-
-MIN_NUM_TIPS_BELOW = 'min_num_tips'
-MAX_NUM_TIPS_BELOW = 'max_num_tips'
+TIPS_BELOW = 'num_tips'
 
 EDGE_SIZE = 'edge_size'
+EDGE_NAME = 'edge_name'
 METACHILD = 'metachild'
-FONT_SIZE = 'fontsize'
+FONT_SIZE = 'node_fontsize'
+
+
+def get_dist_to_root(tip):
+    dist_to_root = 0
+    n = tip
+    while not n.is_root():
+        dist_to_root += n.dist
+        n = n.up
+    return dist_to_root
+
+
+def date_tips(tree, date_df):
+    """
+    Adds dates to the tips as 'date' attribute.
+    :param tree: ete3.Tree
+    :param date_df: a pandas.Series with tip ids as indices and dates as values
+    :return: void, modifies the initial tree
+    """
+    id2tip = {n.name: n for n in tree}
+    date_df = date_df[date_df.index.isin(id2tip) & ~pd.isna(date_df)]
+    dated_fraction = len(date_df) / len(id2tip)
+    if dated_fraction < .5:
+        raise ValueError('Too few dates are provided (only for {}% of tips)!'.format('%g' % (100 * dated_fraction)))
+
+    for id, value in date_df.iteritems():
+        id2tip[id].add_feature(DATE, int(value))
+
+    unique_dates = date_df.unique()
+    if len(unique_dates) == 1:
+        for id in set(id2tip.keys()) - set(date_df.index):
+            id2tip[id].add_feature(DATE, int(unique_dates[0]))
+    else:
+        rec1 = date_df[date_df == unique_dates[0]].sample(1)
+        id1, date1 = rec1.index[0], list(rec1)[0]
+        rec2 = date_df[date_df == unique_dates[1]].sample(1)
+        id2, date2 = rec2.index[0], list(rec2)[0]
+
+        dist1 = get_dist_to_root(id2tip[id1])
+        dist2 = get_dist_to_root(id2tip[id2])
+        rate = (date2 - date1) / (dist2 - dist1)
+
+        for id in set(id2tip.keys()) - set(date_df.index):
+            id2tip[id].add_feature(DATE, int(date1 + rate * (get_dist_to_root(id2tip[id]) - dist1)))
 
 
 def name_tree(tree):
@@ -49,11 +93,13 @@ def collapse_zero_branches(tree):
     num_collapsed = 0
     for n in list(tree.traverse('postorder')):
         for child in list(n.children):
-            if not child.is_leaf() and child.dist == 0:
+            if not child.is_leaf() and child.dist <= 0:
                 n.remove_child(child)
                 for grandchild in child.children:
                     n.add_child(grandchild)
                 num_collapsed += 1
+            if child.is_leaf() and child.dist < 0:
+                child.dist = 0
     logging.info('Collapsed {} zero branches.'.format(num_collapsed))
 
 
@@ -66,32 +112,23 @@ def remove_certain_leaves(tr, to_remove=lambda node: False):
     :return: the tree with naive branches removed (ete3 Tree) or None is all the leaves were naive in the initial tree.
     """
 
-    def _merge_node_with_its_child(nd, child=None):
-        if not child:
-            child = nd.children[0]
-        child.dist += nd.dist
-        if nd.is_root():
-            child.up = None
-        else:
-            parent = nd.up
-            parent.remove_child(nd)
-            parent.add_child(child)
-        return child
-
-    for node in tr.traverse("postorder"):
-        # If this node has only one child branch
-        # it means that the other child branch used to lead to a naive leaf and was removed.
-        # We can merge this node with its child
-        # (the child was already processed and either is a leaf or has 2 children).
-        if len(node.children) == 1:
-            merged_node = _merge_node_with_its_child(node)
-            if merged_node.is_root():
-                tr = merged_node
-                break
-        elif node.is_leaf() and to_remove(node):
-            if node.is_root():
-                return None
-            node.up.remove_child(node)
+    tips = [tip for tip in tr if to_remove(tip)]
+    for node in tips:
+        if node.is_root():
+            return None
+        parent = node.up
+        parent.remove_child(node)
+        # If the parent node has only one child now, merge them.
+        if len(parent.children) == 1:
+            brother = parent.children[0]
+            brother.dist += parent.dist
+            if parent.is_root():
+                brother.up = None
+                tr = brother
+            else:
+                grandparent = parent.up
+                grandparent.remove_child(parent)
+                grandparent.add_child(brother)
     return tr
 
 
@@ -155,26 +192,35 @@ def read_tree(tree_path):
     raise ValueError('Could not read the tree {}. Is it a valid newick?'.format(tree_path))
 
 
+def sum_len_values(kv_dict):
+    return sum(len(_) for _ in kv_dict.values())
+
+
 def get_states(n, categories):
     return {cat: getattr(n, cat) for cat in categories if hasattr(n, cat)}
 
 
-def compress_tree(tree, categories, can_merge_diff_sizes=True, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
-                  name_feature=None):
-    for n in tree.traverse():
+def compress_tree(tree, categories, can_merge_diff_sizes=True, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS):
+
+    for n in tree.traverse('postorder'):
+        n.add_feature(TIPS_INSIDE, defaultdict(list))
+        n.add_feature(TIPS_BELOW, defaultdict(list))
         if n.is_leaf():
-            n.add_feature(MIN_NUM_TIPS_INSIDE, 1)
-            n.add_feature(MAX_NUM_TIPS_INSIDE, 1)
-            n.add_feature(TIPS_INSIDE, [n.name])
+            getattr(n, TIPS_INSIDE)[getattr(n, DATE)].append(n.name)
+            getattr(n, TIPS_BELOW)[getattr(n, DATE)].append(n.name)
         else:
-            num_tips = len(n.get_leaves())
-            n.add_feature(MIN_NUM_TIPS_BELOW, num_tips)
-            n.add_feature(MAX_NUM_TIPS_BELOW, num_tips)
+            for _ in n:
+                getattr(n, TIPS_BELOW)[getattr(_, DATE)].append(_.name)
 
     collapse_vertically(tree, lambda _: get_states(_, categories))
     remove_mediators(tree, lambda _: get_states(_, categories))
 
-    tip_sizes = set(getattr(l, MAX_NUM_TIPS_INSIDE, 0) for l in tree.iter_leaves())
+    for n in tree.traverse():
+        n.add_feature(MAX_NUM_TIPS_INSIDE, sum_len_values(getattr(n, TIPS_INSIDE)))
+        n.add_feature(TIPS_INSIDE, [getattr(n, TIPS_INSIDE)])
+        n.add_feature(TIPS_BELOW, [getattr(n, TIPS_BELOW)])
+
+    tip_sizes = set(getattr(_, MAX_NUM_TIPS_INSIDE) for _ in tree)
     merge_different_sizes = len(tip_sizes) > 10 and can_merge_diff_sizes
     if merge_different_sizes:
         tips2bin = lambda _: int(np.log10(max(1, _)))
@@ -185,73 +231,24 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, tip_size_threshol
                  .format('' if merge_different_sizes else 'not '))
     collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
 
-    if not merge_different_sizes and can_merge_diff_sizes and len(tree.get_leaves()) > REASONABLE_NUMBER_OF_TIPS:
+    if not merge_different_sizes and can_merge_diff_sizes and len(tree) > REASONABLE_NUMBER_OF_TIPS:
         merge_different_sizes = True
         tips2bin = lambda _: int(np.log10(max(1, _)))
 
         logging.info('Gonna re-collapse horizontally, merging nodes of different sizes')
         collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
 
-    tip_sizes = [getattr(_, MAX_NUM_TIPS_INSIDE, 0) * getattr(_, EDGE_SIZE, 1) for _ in tree.get_leaves()]
+    tip_sizes = [getattr(_, MAX_NUM_TIPS_INSIDE, 0) * len(getattr(_, TIPS_INSIDE)) for _ in tree]
     if len(tip_sizes) > tip_size_threshold:
         threshold = sorted(tip_sizes)[-tip_size_threshold]
-        logging.info('Removing tips of size less than {}'.format(threshold))
-        remove_small_tips(tree,
-                          to_be_removed=lambda _: getattr(_, MAX_NUM_TIPS_INSIDE, 0)
-                                                  * getattr(_, EDGE_SIZE, 1) <= threshold)
+        logging.info('Removing tips of size {} or less'.format(threshold))
+        remove_small_tips(tree, to_be_removed=lambda _: getattr(_, MAX_NUM_TIPS_INSIDE, 0)
+                                                        * len(getattr(_, TIPS_INSIDE)) <= threshold)
         remove_mediators(tree, lambda _: get_states(_, categories))
 
     logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
                  .format('' if merge_different_sizes else 'not '))
     collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
-
-    tip_sizes = [getattr(n, MAX_NUM_TIPS_INSIDE, 0) for n in tree.traverse() if getattr(n, MAX_NUM_TIPS_INSIDE, 0)]
-    max_size = max(tip_sizes)
-    min_size = min(tip_sizes)
-    need_log = max_size / min_size > 100
-    logging.info('Max vertical cluster size is {}, min is {}: {}need log'.format(max_size, min_size,
-                                                                                 '' if need_log else 'do not '))
-
-    e_szs = [getattr(n, EDGE_SIZE, 1) for n in tree.traverse()]
-    max_e_size = max(e_szs)
-    min_e_size = min(e_szs)
-    logging.info('Max horizontal cluster size is {}, min is {}'.format(max_e_size, min_e_size))
-    need_e_log = max_e_size / min_e_size > 100
-
-    transform_size = lambda _: np.power(np.log10(_ + 9) if need_log else _, 1 / 2)
-    transform_e_size = lambda _: np.log10(_) if need_e_log else _
-    size_scaling = get_scaling_function(y_m=30, y_M=30 * min(8, int(max_size / min_size)),
-                                        x_m=transform_size(min_size), x_M=transform_size(max_size))
-    font_scaling = get_scaling_function(y_m=10, y_M=10 * min(3, int(max_size / min_size)),
-                                        x_m=transform_size(min_size), x_M=transform_size(max_size))
-    e_size_scaling = get_scaling_function(y_m=5, y_M=5 * min(5, int(max_e_size / min_e_size)),
-                                          x_m=transform_e_size(min_e_size), x_M=transform_e_size(max_e_size))
-    for n in tree.traverse():
-        state = getattr(n, name_feature, '') if name_feature is not None else ''
-
-        min_n_tips = getattr(n, MIN_NUM_TIPS_INSIDE, 0)
-        max_n_tips = getattr(n, MAX_NUM_TIPS_INSIDE, 0)
-
-        min_n_tips_below = getattr(n, MIN_NUM_TIPS_BELOW, 0)
-        max_n_tips_below = getattr(n, MAX_NUM_TIPS_BELOW, 0)
-
-        edge_size = getattr(n, EDGE_SIZE, 1)
-
-        n.state = '{} {} {}'.format(state,
-                                    ('{}-{}'.format(min_n_tips, max_n_tips) if min_n_tips != max_n_tips else min_n_tips)
-                                    if max_n_tips > 0 else '',
-                                    '({})'.format(
-                                        '{}-{}'.format(min_n_tips_below,
-                                                       max_n_tips_below) if min_n_tips_below != max_n_tips_below
-                                        else min_n_tips_below)
-                                    if max_n_tips_below > 0 else '')
-
-        n.add_feature(SIZE, 20 if max_n_tips == 0 else size_scaling(transform_size(max_n_tips)))
-        n.add_feature(FONT_SIZE, 10 if max_n_tips == 0 else font_scaling(transform_size(max_n_tips)))
-
-        n.add_feature('edge_name', str(edge_size) if edge_size > 1 else '')
-        n.add_feature(EDGE_SIZE, e_size_scaling(transform_e_size(edge_size)))
-
     return tree
 
 
@@ -262,20 +259,11 @@ def collapse_horizontally(tips2bin, tree, get_states):
         parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
 
 
-def get_scaling_function(y_m, y_M, x_m, x_M):
-    # calculate a linear function y = k x + b, where y \in [m, M]
-    if x_M <= x_m:
-        return lambda _: y_m
-    k = (y_M - y_m) / (x_M - x_m)
-    b = y_m - k * x_m
-    return lambda _: int(k * _ + b)
-
-
 def _collapse_horizontally(get_states, parents, tips2bin=lambda _: _):
     def get_sorted_states(n, add_edge_size=True):
         return tuple(sorted('{}:{}'.format(k, v) for (k, v) in get_states(n).items())), \
-               tips2bin(getattr(n, MAX_NUM_TIPS_INSIDE, 0)), \
-               (getattr(n, EDGE_SIZE, 1) if add_edge_size else -1)
+               tips2bin(getattr(n, MAX_NUM_TIPS_INSIDE)), \
+               (len(getattr(n, TIPS_INSIDE)) if add_edge_size else -1)
 
     def get_configuration(n):
         queue = Queue()
@@ -293,19 +281,20 @@ def _collapse_horizontally(get_states, parents, tips2bin=lambda _: _):
         for c in p.children:
             state2children[get_configuration(c)].append(c)
         for children in (_ for _ in state2children.values() if len(_) > 1):
-            edge_size = sum(getattr(c, EDGE_SIZE, 1) for c in children)
             child = children[0]
             for c in children[1:]:
                 p.remove_child(c)
-            child.add_feature(EDGE_SIZE, edge_size)
             child.add_feature(METACHILD, True)
-            merge_features(child, children, (MIN_NUM_TIPS_INSIDE,), min, default_value=0)
-            merge_features(child, children, (MAX_NUM_TIPS_INSIDE,), max, default_value=0)
 
-            merge_features(child, children, (MIN_NUM_TIPS_BELOW,), min, default_value=0)
-            merge_features(child, children, (MAX_NUM_TIPS_BELOW,), max, default_value=0)
+            tips_inside, tips_below = [], []
+            for _ in children:
+                tips_inside.extend(getattr(_, TIPS_INSIDE))
+                tips_below.extend(getattr(_, TIPS_BELOW))
 
-            child.add_feature(TIPS_INSIDE, [getattr(_, TIPS_INSIDE, []) for _ in children])
+            child.add_feature(TIPS_INSIDE, tips_inside)
+            child.add_feature(TIPS_BELOW, tips_below)
+
+            child.add_feature(DATE, min(getattr(_, DATE) for _ in children))
 
 
 def remove_small_tips(tree, to_be_removed):
@@ -339,17 +328,8 @@ def collapse_vertically(tree, get_states):
         for child in children:
             # merge the child into this node if their states are the same
             if set(get_states(child).items()) == states:
-                old_max_tips = getattr(n, MAX_NUM_TIPS_INSIDE, 0)
-                old_min_tips = getattr(n, MIN_NUM_TIPS_INSIDE, 0)
-
-                merge_features(n, (n, child), (MAX_NUM_TIPS_INSIDE, MIN_NUM_TIPS_INSIDE), sum, default_value=0)
-                n.add_feature(TIPS_INSIDE, getattr(n, TIPS_INSIDE, []) + getattr(child, TIPS_INSIDE, []))
-
-                max_tips = getattr(n, MAX_NUM_TIPS_INSIDE, 0)
-                min_tips = getattr(n, MIN_NUM_TIPS_INSIDE, 0)
-
-                n.add_feature(MAX_NUM_TIPS_BELOW, getattr(n, MAX_NUM_TIPS_BELOW) - (max_tips - old_max_tips))
-                n.add_feature(MIN_NUM_TIPS_BELOW, getattr(n, MIN_NUM_TIPS_BELOW) - (min_tips - old_min_tips))
+                for date, tip_names in getattr(child, TIPS_INSIDE).items():
+                    getattr(n, TIPS_INSIDE)[date].extend(tip_names)
 
                 n.remove_child(child)
                 for grand_child in child.children:
@@ -381,17 +361,12 @@ def remove_mediators(tree, get_states):
         else:
             compatible = set(states.items()) == set(parent_states.items()) | set(child_states.items())
         if compatible:
-            old_max_tips = getattr(parent, MAX_NUM_TIPS_INSIDE, 0)
-            old_min_tips = getattr(parent, MIN_NUM_TIPS_INSIDE, 0)
-
-            merge_features(parent, (parent, n), (MAX_NUM_TIPS_INSIDE, MIN_NUM_TIPS_INSIDE), sum, default_value=0)
-            parent.add_feature(TIPS_INSIDE, getattr(parent, TIPS_INSIDE, []) + getattr(n, TIPS_INSIDE, []))
-
-            max_tips = getattr(parent, MAX_NUM_TIPS_INSIDE, 0)
-            min_tips = getattr(parent, MIN_NUM_TIPS_INSIDE, 0)
-
-            parent.add_feature(MAX_NUM_TIPS_BELOW, getattr(parent, MAX_NUM_TIPS_BELOW) - (max_tips - old_max_tips))
-            parent.add_feature(MIN_NUM_TIPS_BELOW, getattr(parent, MIN_NUM_TIPS_BELOW) - (min_tips - old_min_tips))
+            n_tips_inside = getattr(n, TIPS_INSIDE)[0] if isinstance(getattr(n, TIPS_INSIDE), list) \
+                else getattr(n, TIPS_INSIDE)
+            tips_inside = getattr(parent, TIPS_INSIDE)[0] if isinstance(getattr(parent, TIPS_INSIDE), list) \
+                else getattr(parent, TIPS_INSIDE)
+            for date, tip_names in n_tips_inside.items():
+                tips_inside[date].extend(tip_names)
 
             parent.remove_child(n)
             for c in n.children:

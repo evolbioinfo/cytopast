@@ -1,9 +1,19 @@
 import os
 from queue import Queue
+import numpy as np
 
 from jinja2 import Environment, PackageLoader
 
-from cytopast import METACHILD, MAX_NUM_TIPS_INSIDE, get_states
+from cytopast import METACHILD, MAX_NUM_TIPS_INSIDE, get_states, DATE, NODE_SIZE, FONT_SIZE, EDGE_NAME, NODE_NAME, \
+    EDGE_SIZE, TIPS_INSIDE, TIPS_BELOW, sum_len_values
+
+TOOLTIP = 'tooltip'
+
+DEFAULT_FONT_SIZE = 10
+
+COLOR = 'color'
+
+SHAPE = 'shape'
 
 FAKE_NODE_SHAPE = 'rectangle'
 
@@ -17,18 +27,12 @@ DEFAULT_EDGE_SIZE = 10
 DEFAULT_EDGE_COLOR = '#909090'
 SPECIAL_EDGE_COLOR = '#383838'
 
-FONT_SIZE = 'fontsize'
-
 DEFAULT_SIZE = 50
 
 STATE = 'state'
 
-SIZE = 'size'
-EDGE_SIZE = 'edge_size'
-
 DATA = 'data'
 ID = 'id'
-NAME = 'name'
 EDGES = 'edges'
 NODES = 'nodes'
 ELEMENTS = 'elements'
@@ -39,10 +43,112 @@ TARGET = 'target'
 SOURCE = 'source'
 
 
-def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_key):
+def get_fake_node(n, n_id):
+    attributes = {ID: n_id, 'is_fake': 1, SHAPE: FAKE_NODE_SHAPE}
+    for feature in n.features:
+        if feature.startswith(NODE_NAME):
+            attributes[feature] = ''
+        if feature.startswith(NODE_SIZE):
+            attributes[feature] = 1
+        if feature.startswith(FONT_SIZE):
+            attributes[feature] = 1
+    return _get_node(attributes)
+
+
+def get_node(n, n_id, tooltip='', clazz=None):
+    features = {feature: getattr(n, feature) for feature in n.features if feature in [SHAPE, DATE]
+                or feature.startswith('node_')}
+    features[ID] = n_id
+    if SHAPE not in n.features:
+        features[SHAPE] = TIP_SHAPE if n.is_leaf() and getattr(n, MAX_NUM_TIPS_INSIDE, 1) == 1 \
+            else INNER_NODE_SHAPE if getattr(n, MAX_NUM_TIPS_INSIDE, 0) == 0 else MERGED_NODE_SHAPE
+    features[TOOLTIP] = tooltip
+    return _get_node(features, clazz=_clazz_list2css_class(clazz))
+
+
+def get_edge(n, source_name, target_name, **kwargs):
+    features = {SOURCE: source_name, TARGET: target_name, INTERACTION: 'triangle', COLOR: DEFAULT_EDGE_COLOR}
+    features.update({feature: getattr(n, feature) for feature in n.features if feature.startswith('edge_')
+                     or feature == DATE})
+    features.update(kwargs)
+    return _get_edge(**features)
+
+
+def get_scaling_function(y_m, y_M, x_m, x_M):
+    """
+    Returns a linear function y = k x + b, where y \in [m, M]
+    :param y_m:
+    :param y_M:
+    :param x_m:
+    :param x_M:
+    :return:
+    """
+    if x_M <= x_m:
+        return lambda _: y_m
+    k = (y_M - y_m) / (x_M - x_m)
+    b = y_m - k * x_m
+    return lambda _: int(k * _ + b)
+
+
+def set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling, transform_size,
+                      transform_e_size, state, suffix=''):
+    min_n_tips = min(sum_len_values(_) for _ in tips_inside) if tips_inside else 0
+    max_n_tips = max(sum_len_values(_) for _ in tips_inside) if tips_inside else 0
+
+    min_n_tips_below = min(sum_len_values(_) for _ in tips_below) if tips_below else 0
+    max_n_tips_below = max(sum_len_values(_) for _ in tips_below) if tips_below else 0
+
+    n.add_feature('{}{}'.format(NODE_NAME, suffix),
+                  '{}{}{}'.format(state,
+                                  (' {}'.format('{}-{}'.format(min_n_tips, max_n_tips)
+                                                if min_n_tips != max_n_tips else min_n_tips))
+                                  if max_n_tips > 0 else '',
+                                  ' ({})'.format('{}-{}'.format(min_n_tips_below, max_n_tips_below)
+                                                 if min_n_tips_below != max_n_tips_below else min_n_tips_below)
+                                  if max_n_tips_below > 0 else ''))
+
+    n.add_feature('{}{}'.format(NODE_SIZE, suffix), 20 if max_n_tips == 0 else size_scaling(transform_size(max_n_tips)))
+    n.add_feature('{}{}'.format(FONT_SIZE, suffix), 10 if max_n_tips == 0 else font_scaling(transform_size(max_n_tips)))
+
+    # If it is a compressed tree, set horizontal size as label
+    if max_n_tips > 0 or max_n_tips_below > 0:
+        edge_size = max(len(tips_inside), 1)
+        n.add_feature('{}{}'.format(EDGE_NAME, suffix), str(edge_size) if edge_size != 1 else '')
+        n.add_feature('{}{}'.format(EDGE_SIZE, suffix), e_size_scaling(transform_e_size(edge_size)))
+    # else set dist as label
+    else:
+        n.add_feature('{}{}'.format(EDGE_NAME, suffix), '%g' % round(n.dist, 2))
+        n.add_feature('{}{}'.format(EDGE_SIZE, suffix), e_size_scaling(transform_e_size(1)))
+
+
+def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_key, min_date=0, max_date=0):
+    e_size_scaling, font_scaling, size_scaling, transform_e_size, transform_size = get_size_transformations(tree)
+
+    for n in tree.traverse():
+        state = getattr(n, name_feature, '') if name_feature is not None else ''
+
+        tips_inside, tips_below = getattr(n, TIPS_INSIDE, []), getattr(n, TIPS_BELOW, [])
+        if isinstance(tips_inside, dict):
+            tips_inside = [tips_inside]
+        if isinstance(tips_below, dict):
+            tips_below = [tips_below]
+        set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling, transform_size,
+                          transform_e_size, state, suffix='')
+
+        if min_date != max_date:
+            for year in range(int(max_date), int(min_date) - 1, -1):
+                tips_inside = [e for e in
+                               ({k: _ for (k, _) in year2tips.items() if k <= year} for year2tips in tips_inside)
+                               if e]
+                tips_below = [e for e in
+                              ({k: _ for (k, _) in year2tips.items() if k <= year} for year2tips in tips_below)
+                              if e]
+                set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling,
+                                  transform_size,
+                                  transform_e_size, state, suffix='_{}'.format(year))
+
     clazzes = set()
     nodes, edges = [], []
-    features_to_keep = [SIZE, 'shape', FONT_SIZE]
 
     if add_fake_nodes:
         max_dist = max(n.dist for n in tree.traverse())
@@ -62,57 +168,63 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, n2tooltip, sort_k
 
     for n, n_id in sorted(node2id.items(), key=lambda ni: ni[1]):
         if n == tree and add_fake_nodes and int(n.dist / dist_step) > 0:
-            edge_name = getattr(n, 'edge_name', '%g' % n.dist)
-            source_name = 'fake_node_{}'.format(n_id)
-            nodes.append(_get_node({ID: source_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': FAKE_NODE_SHAPE,
-                                    FONT_SIZE: 1}))
-            edges.append(_get_edge(**{SOURCE: source_name, TARGET: n_id, INTERACTION: 'triangle',
-                                      SIZE: getattr(n, EDGE_SIZE, DEFAULT_EDGE_SIZE), NAME: edge_name,
-                                      'color': DEFAULT_EDGE_COLOR}))
-        features = {feature: getattr(n, feature) for feature in n.features if feature in features_to_keep}
-        features[ID] = n_id
-        features[NAME] = str(getattr(n, name_feature, '') if name_feature is not None else '')
-        if SIZE not in n.features:
-            features[SIZE] = DEFAULT_SIZE
-        if FONT_SIZE not in n.features:
-            features[FONT_SIZE] = 10
-        if 'shape' not in n.features:
-            features['shape'] = TIP_SHAPE if n.is_leaf() and getattr(n, MAX_NUM_TIPS_INSIDE, 1) == 1 \
-                else INNER_NODE_SHAPE if getattr(n, MAX_NUM_TIPS_INSIDE, 0) == 0 else MERGED_NODE_SHAPE
-        tooltip = node2tooltip[n]
-        features['tooltip'] = tooltip
+            fake_id = 'fake_node_{}'.format(n_id)
+            nodes.append(get_fake_node(n, fake_id))
+            edges.append(get_edge(n, fake_id, n_id))
+
         clazz = tuple('{}_{}'.format(cat, getattr(n, cat)) for cat in categories if hasattr(n, cat))
         if clazz:
             clazzes.add(clazz)
-        nodes.append(_get_node(features, clazz=_clazz_list2css_class(clazz)))
+        nodes.append(get_node(n, n_id, tooltip=node2tooltip[n], clazz=clazz))
+
         for child in sorted(n.children, key=lambda _: node2id[_]):
-            edge_color = SPECIAL_EDGE_COLOR if getattr(child, METACHILD, False) else DEFAULT_EDGE_COLOR
+            edge_attributes = {COLOR: (SPECIAL_EDGE_COLOR if getattr(child, METACHILD, False) else DEFAULT_EDGE_COLOR)}
             source_name = n_id
-            edge_size = getattr(child, EDGE_SIZE, DEFAULT_EDGE_SIZE)
-            edge_name = getattr(child, 'edge_name', '%g' % round(child.dist, 2))
             if add_fake_nodes and int(child.dist / dist_step) > 0:
                 target_name = 'fake_node_{}'.format(node2id[child])
-                nodes.append(_get_node({ID: target_name, NAME: '', 'is_fake': 1, SIZE: 1, 'shape': FAKE_NODE_SHAPE,
-                                        FONT_SIZE: 1}))
-                edges.append(_get_edge(**{SOURCE: source_name, TARGET: target_name, INTERACTION: 'none',
-                                          SIZE: edge_size, NAME: '', 'color': edge_color}))
+                nodes.append(get_fake_node(child, target_name))
+                fake_edge_attributes = {k: '' for k in child.features if k.startswith(EDGE_NAME)}
+                fake_edge_attributes.update(edge_attributes)
+                fake_edge_attributes[INTERACTION] = 'none'
+                edges.append(get_edge(child, source_name, target_name, **fake_edge_attributes))
                 source_name = target_name
-            edge_data = {SOURCE: source_name, TARGET: node2id[child], INTERACTION: 'triangle',
-                         SIZE: edge_size, NAME: edge_name, 'color': edge_color}
             if add_fake_nodes:
-                edge_data['minLen'] = int(child.dist / dist_step)
-            edges.append(_get_edge(**edge_data))
+                edge_attributes['minLen'] = int(child.dist / dist_step)
+            edges.append(get_edge(child, source_name, node2id[child], **edge_attributes))
 
     json_dict = {NODES: nodes, EDGES: edges}
     return json_dict, sorted(clazzes)
+
+
+def get_size_transformations(tree):
+    n_sizes = [getattr(n, MAX_NUM_TIPS_INSIDE) for n in tree.traverse() if getattr(n, MAX_NUM_TIPS_INSIDE, False)]
+    max_size = max(n_sizes) if n_sizes else 1
+    min_size = min(n_sizes) if n_sizes else 1
+    need_log = max_size / min_size > 100
+    transform_size = lambda _: np.power(np.log10(_ + 9) if need_log else _, 1 / 2)
+
+    e_szs = [len(getattr(n, TIPS_INSIDE)) for n in tree.traverse() if getattr(n, TIPS_INSIDE, False)]
+    max_e_size = max(e_szs) if e_szs else 1
+    min_e_size = min(e_szs) if e_szs else 1
+    need_e_log = max_e_size / min_e_size > 100
+    transform_e_size = lambda _: np.log10(_) if need_e_log else _
+
+    size_scaling = get_scaling_function(y_m=30, y_M=30 * min(8, int(max_size / min_size)),
+                                        x_m=transform_size(min_size), x_M=transform_size(max_size))
+    font_scaling = get_scaling_function(y_m=10, y_M=10 * min(3, int(max_size / min_size)),
+                                        x_m=transform_size(min_size), x_M=transform_size(max_size))
+    e_size_scaling = get_scaling_function(y_m=10, y_M=10 * min(3, int(max_e_size / min_e_size)),
+                                          x_m=transform_e_size(min_e_size), x_M=transform_e_size(max_e_size))
+
+    return e_size_scaling, font_scaling, size_scaling, transform_e_size, transform_size
 
 
 def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feature=STATE,
                            name2colour=None, add_fake_nodes=True,
                            n2tooltip=lambda n, categories: ', '.join(get_states(n, categories)),
                            sort_key=lambda n, name_feature, node2tooltip:
-                           (getattr(n, name_feature, '') if name_feature else '', node2tooltip[n],
-                            -getattr(n, SIZE, 0), n.name)):
+                           (str(getattr(n, name_feature, '')) if name_feature else '', node2tooltip[n],
+                            -getattr(n, NODE_SIZE, 0), n.name), min_date=0, max_date=0):
     """
     Converts a tree to an html representation using Cytoscape.js.
 
@@ -140,7 +252,7 @@ def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feat
 
     json_dict, clazzes \
         = _tree2json(tree, categories=categories, add_fake_nodes=add_fake_nodes, name_feature=name_feature,
-                     n2tooltip=n2tooltip, sort_key=sort_key)
+                     n2tooltip=n2tooltip, sort_key=sort_key, min_date=min_date, max_date=max_date)
     env = Environment(loader=PackageLoader('cytopast'))
     template = env.get_template('pie_tree.js')
 
@@ -154,9 +266,13 @@ def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feat
                 'pie-{i}-background-size': '{percent}\%',
             """.format(i=i, percent=round(100 / n, 2), colour=name2colour[cat])
         clazz2css[_clazz_list2css_class(clazz_list)] = css
-    graph = template.render(clazz2css=clazz2css.items(), elements=json_dict, layout=layout, title=graph_name)
+    graph = template.render(clazz2css=clazz2css.items(), elements=json_dict, layout=layout, title=graph_name,
+                            min_date=min_date, max_date=max_date)
+    slider = env.get_template('time_slider.html').render(min_date=min_date, max_date=max_date) \
+        if min_date != max_date else ''
+
     template = env.get_template('index.html')
-    page = template.render(graph=graph, title=graph_name)
+    page = template.render(graph=graph, title=graph_name, slider=slider)
 
     os.makedirs(os.path.abspath(os.path.dirname(out_html)), exist_ok=True)
     with open(out_html, 'w+') as fp:
