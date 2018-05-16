@@ -1,4 +1,5 @@
 import logging
+import random
 from collections import defaultdict, Counter
 from functools import reduce
 from queue import Queue
@@ -42,6 +43,17 @@ def date_tips(tree, date_df):
     :param date_df: a pandas.Series with tip ids as indices and dates as values
     :return: void, modifies the initial tree
     """
+
+    def _get_date(d):
+        if pd.notnull(d):
+            first_jan_this_year = pd.datetime(year=d.year, month=1, day=1)
+            day_of_this_year = d - first_jan_this_year
+            first_jan_next_year = pd.datetime(year=d.year + 1, month=1, day=1)
+            days_in_this_year = first_jan_next_year - first_jan_this_year
+            return d.year + day_of_this_year / days_in_this_year
+        else:
+            return None
+
     id2tip = {n.name: n for n in tree}
     date_df = date_df[date_df.index.isin(id2tip) & ~pd.isna(date_df)]
     dated_fraction = len(date_df) / len(id2tip)
@@ -49,24 +61,35 @@ def date_tips(tree, date_df):
         raise ValueError('Too few dates are provided (only for {}% of tips)!'.format('%g' % (100 * dated_fraction)))
 
     for id, value in date_df.iteritems():
-        id2tip[id].add_feature(DATE, int(value))
+        id2tip[id].add_feature(DATE, int(_get_date(value)))
 
-    unique_dates = date_df.unique()
-    if len(unique_dates) == 1:
-        for id in set(id2tip.keys()) - set(date_df.index):
-            id2tip[id].add_feature(DATE, int(unique_dates[0]))
-    else:
-        rec1 = date_df[date_df == unique_dates[0]].sample(1)
-        id1, date1 = rec1.index[0], list(rec1)[0]
-        rec2 = date_df[date_df == unique_dates[1]].sample(1)
-        id2, date2 = rec2.index[0], list(rec2)[0]
+    min_date, max_date = int(_get_date(date_df.min())), int(_get_date(date_df.max()))
 
-        dist1 = get_dist_to_root(id2tip[id1])
-        dist2 = get_dist_to_root(id2tip[id2])
-        rate = (date2 - date1) / (dist2 - dist1)
+    if len(date_df) < len(id2tip):
+        unique_dates = list(date_df.unique())
+        if len(unique_dates) == 1:
+            for id in set(id2tip.keys()) - set(date_df.index):
+                id2tip[id].add_feature(DATE, int(_get_date(unique_dates[0])))
+        else:
+            rates = []
+            for _ in range(10):
+                date1, date2 = random.sample(unique_dates, 2)
+                id1, date1 = next(date_df[date_df == date1].sample(1).iteritems())
+                id2, date2 = next(date_df[date_df == date2].sample(1).iteritems())
 
-        for id in set(id2tip.keys()) - set(date_df.index):
-            id2tip[id].add_feature(DATE, int(date1 + rate * (get_dist_to_root(id2tip[id]) - dist1)))
+                dist1 = get_dist_to_root(id2tip[id1])
+                dist2 = get_dist_to_root(id2tip[id2])
+                rate = (_get_date(date2) - _get_date(date1)) / (dist2 - dist1)
+                rates.append(rate)
+                print(dist2, dist1, date2, date1, rate)
+            rate = np.mean(rates)
+
+            for id in set(id2tip.keys()) - set(date_df.index):
+                id2tip[id].add_feature(DATE,
+                                       min(min_date, max(max_date,
+                                                         int(_get_date(date1) + rate * (get_dist_to_root(id2tip[id]) - dist1)))))
+
+    return min(_.date for _ in id2tip.values()), max(_.date for _ in id2tip.values())
 
 
 def name_tree(tree):
@@ -105,11 +128,10 @@ def collapse_zero_branches(tree):
 
 def remove_certain_leaves(tr, to_remove=lambda node: False):
     """
-    Removes all the branches leading to naive leaves from the given tree.
+    Removes all the branches leading to leaves identified positively by to_remove function.
     :param tr: the tree of interest (ete3 Tree)
-    [(state_1, 0), (state_2, time_of_transition_from_state_1_to_2), ...]. Branch removals will be added as '!'.
     :param to_remove: a method to check is a leaf should be removed.
-    :return: the tree with naive branches removed (ete3 Tree) or None is all the leaves were naive in the initial tree.
+    :return: void, modifies the initial tree.
     """
 
     tips = [tip for tip in tr if to_remove(tip)]

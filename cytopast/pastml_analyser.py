@@ -11,7 +11,7 @@ from pastml import JOINT, MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JC, 
 
 from cytopast import compress_tree, read_tree, \
     pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree, collapse_zero_branches, \
-    col_name2cat, REASONABLE_NUMBER_OF_TIPS, date_tips, DATE
+    col_name2cat, REASONABLE_NUMBER_OF_TIPS, date_tips, DATE, METACHILD
 from cytopast.colour_generator import get_enough_colours, WHITE
 from cytopast.cytoscape_manager import save_as_cytoscape_html
 
@@ -157,12 +157,11 @@ def quote(str_list):
 def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, data_sep='\t', id_index=0, columns=None,
                     name_column=None, work_dir=None, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
                     model=JC, prediction_method=MARGINAL_APPROXIMATION,
-                    copy_columns=None, verbose=False, date_column=None, date_format=None):
+                    copy_columns=None, verbose=False, date_column=None):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
 
     :param date_column: str (optional), name of the data table column that contains tip dates.
-    :param date_format: str (optional), date format for the data table column that contains tip dates
     (following pandas specification, by default is inferred).
     :param out_data: str, path to the output annotation file with the states inferred by PASTML.
     :param tree: str, path to the input tree in newick format.
@@ -206,7 +205,12 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     if not columns:
         columns = []
 
-    df = pd.read_table(data, sep=data_sep, index_col=id_index, header=0)
+    kwargs = {}
+    if date_column:
+        kwargs['parse_dates'] = [date_column]
+        kwargs['infer_datetime_format'] = True
+
+    df = pd.read_table(data, sep=data_sep, index_col=id_index, header=0, **kwargs)
     df.index = df.index.map(str)
 
     unknown_columns = (set(columns) | set(copy_columns)) - set(df.columns)
@@ -229,35 +233,13 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
         raise ValueError('The name column ({}) should be one of those specified as columns ({}) or copy_columns ({}).'
                          .format(quote([name_column]), quote(columns), quote(copy_columns)))
 
-    if date_column and (date_column not in df.columns):
-        raise ValueError('The date column ({}) is not found among the annotation columns: {}.'
-                         .format(quote([date_column]), quote(df.columns)))
-
-    if date_column:
-        df[date_column] = pd.to_datetime(df[date_column], format=date_format, infer_datetime_format=True)
-
-        def _get_date(d):
-            if pd.notnull(d):
-                first_jan_this_year = pd.datetime(year=d.year, month=1, day=1)
-                day_of_this_year = d - first_jan_this_year
-                first_jan_next_year = pd.datetime(year=d.year + 1, month=1, day=1)
-                days_in_this_year = first_jan_next_year - first_jan_this_year
-                return d.year + day_of_this_year / days_in_this_year
-            else:
-                return None
-
-        df[date_column] = df[date_column].apply(_get_date)
-
     tree_name = os.path.basename(tree)
 
     res_annotations = out_data if out_data else \
         os.path.join(work_dir, 'combined_annotations_{}_{}_{}_{}.tab'
                      .format('_'.join(columns + copy_columns), model, prediction_method, tree_name))
-
     new_tree = os.path.join(work_dir, tree_name + '.pastml.nwk')
     root = read_tree(tree)
-    if date_column:
-        date_tips(root, df[date_column])
     names = df.index.astype(np.str)
     node_names = [n.name for n in root.iter_leaves() if n.name not in names]
     if node_names:
@@ -276,8 +258,10 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
                                          prediction_method=prediction_method)
 
     if html or html_compressed:
-        min_date = 0 if not date_column else min((_.date for _ in root if hasattr(_, 'date')))
-        max_date = 0 if not date_column else max((_.date for _ in root if hasattr(_, 'date')))
+        if date_column:
+            min_date, max_date = date_tips(root, df[date_column])
+        else:
+            min_date, max_date = 0, 0
         logging.info("Dates vary between {} and {}.".format(min_date, max_date))
         root = _past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
                          columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
@@ -320,12 +304,16 @@ def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='
         for cat, col in zip(categories, colours):
             name2colour['{}_{}'.format(cat, True)] = col
 
+    get_name = lambda n: '{}, ...'.format(n.name) if getattr(n, METACHILD, False) else n.name
     if one_column:
-        n2tooltip = lambda n, cats: ', '.join('{}'.format(_) for _ in cats
-                                              if hasattr(n, _) and getattr(n, _, '') != '')
+        n2tooltip = lambda n, cats: 'id: {}<br>{}: {}'.format(get_name(n), columns[0],
+                                                              ' or '.join('{}'.format(_) for _ in cats if hasattr(n, _)
+                                                                          and getattr(n, _, '') != ''))
     else:
         n2tooltip = lambda n, cats: \
-            ', '.join('{}:{}'.format(_, getattr(n, _)) for _ in cats if hasattr(n, _) and getattr(n, _, '') != '')
+            'id: {}<br>{}'.format(get_name(n),
+                                  '<br>'.join('{}: {}'.format(_, getattr(n, _)) for _ in cats if hasattr(n, _)
+                                              and getattr(n, _, '') != ''))
 
     for n in tree.traverse('postorder'):
         if n.is_leaf():
@@ -376,10 +364,6 @@ def main():
                                   type=str)
     annotation_group.add_argument('--date_column', required=False, default=None,
                                   help="name of the data table column that contains tip dates.",
-                                  type=str)
-    annotation_group.add_argument('--date_format', required=False, default=None,
-                                  help="date format for the data table column that contains tip dates "
-                                       "(following pandas specification, by default is inferred).",
                                   type=str)
 
     tree_group = parser.add_argument_group('tree-related arguments')
