@@ -18,8 +18,8 @@ NODE_SIZE = 'node_size'
 MAX_NUM_TIPS_INSIDE = 'max_size'
 NODE_NAME = 'node_name'
 
-TIPS_INSIDE = 'tips'
-TIPS_BELOW = 'num_tips'
+TIPS_INSIDE = 'in_tips'
+TIPS_BELOW = 'all_tips'
 
 EDGE_SIZE = 'edge_size'
 EDGE_NAME = 'edge_name'
@@ -206,9 +206,9 @@ def col_name2cat(column):
 
 
 def read_tree(tree_path):
-    for format in (3, 2, 5, 1, 0, 3, 4, 6, 7, 8, 9):
+    for f in (3, 2, 5, 1, 0, 3, 4, 6, 7, 8, 9):
         try:
-            return Tree(tree_path, format=format)
+            return Tree(tree_path, format=f)
         except:
             continue
     raise ValueError('Could not read the tree {}. Is it a valid newick?'.format(tree_path))
@@ -268,9 +268,9 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, tip_size_threshol
                                                         * len(getattr(_, TIPS_INSIDE)) <= threshold)
         remove_mediators(tree, lambda _: get_states(_, categories))
 
-    logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
-                 .format('' if merge_different_sizes else 'not '))
-    collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
+        logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
+                     .format('' if merge_different_sizes else 'not '))
+        collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
     return tree
 
 
@@ -303,6 +303,7 @@ def _collapse_horizontally(get_states, parents, tips2bin=lambda _: _):
         for c in p.children:
             state2children[get_configuration(c)].append(c)
         for children in (_ for _ in state2children.values() if len(_) > 1):
+            children = sorted(children, key=lambda _: getattr(_, DATE, 0))
             child = children[0]
             for c in children[1:]:
                 p.remove_child(c)

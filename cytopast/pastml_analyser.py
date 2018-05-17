@@ -11,7 +11,7 @@ from pastml import JOINT, MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JC, 
 
 from cytopast import compress_tree, read_tree, \
     pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree, collapse_zero_branches, \
-    col_name2cat, REASONABLE_NUMBER_OF_TIPS, date_tips, DATE, METACHILD
+    col_name2cat, REASONABLE_NUMBER_OF_TIPS, date_tips, DATE
 from cytopast.colour_generator import get_enough_colours, WHITE
 from cytopast.cytoscape_manager import save_as_cytoscape_html
 
@@ -304,17 +304,6 @@ def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='
         for cat, col in zip(categories, colours):
             name2colour['{}_{}'.format(cat, True)] = col
 
-    get_name = lambda n: '{}, ...'.format(n.name) if getattr(n, METACHILD, False) else n.name
-    if one_column:
-        n2tooltip = lambda n, cats: 'id: {}<br>{}: {}'.format(get_name(n), columns[0],
-                                                              ' or '.join('{}'.format(_) for _ in cats if hasattr(n, _)
-                                                                          and getattr(n, _, '') != ''))
-    else:
-        n2tooltip = lambda n, cats: \
-            'id: {}<br>{}'.format(get_name(n),
-                                  '<br>'.join('{}: {}'.format(_, getattr(n, _)) for _ in cats if hasattr(n, _)
-                                              and getattr(n, _, '') != ''))
-
     for n in tree.traverse('postorder'):
         if n.is_leaf():
             if not hasattr(n, DATE):
@@ -322,16 +311,23 @@ def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='
         else:
             n.add_feature(DATE, min(getattr(_, DATE) for _ in n))
 
+    def get_category_str(n):
+        if one_column:
+            return '{}: {}'.format(columns[0], ' or '.join('{}'.format(_) for _ in categories if hasattr(n, _)
+                                                           and getattr(n, _, '') != ''))
+        return '<br>'.join('{}: {}'.format(_, getattr(n, _)) for _ in categories if hasattr(n, _)
+                           and getattr(n, _, '') != '')
+
     if html:
-        save_as_cytoscape_html(tree, html, categories=categories, name2colour=name2colour, n2tooltip=n2tooltip,
+        save_as_cytoscape_html(tree, html, categories=categories, name2colour=name2colour,
+                               n2tooltip={n: get_category_str(n) for n in tree.traverse()},
                                name_feature='name', min_date=min_date, max_date=max_date)
 
     if html_compressed:
-        tree = compress_tree(tree,
-                             categories=([name_column] + categories) if name_column and not one_column else categories,
-                             tip_size_threshold=tip_size_threshold)
+        tree = compress_tree(tree, categories=categories, tip_size_threshold=tip_size_threshold)
         save_as_cytoscape_html(tree, html_compressed, categories=categories,
-                               name2colour=name2colour, add_fake_nodes=False, n2tooltip=n2tooltip,
+                               name2colour=name2colour, add_fake_nodes=False,
+                               n2tooltip={n: get_category_str(n) for n in tree.traverse()},
                                min_date=min_date, max_date=max_date, name_feature=name_column)
     return tree
 
