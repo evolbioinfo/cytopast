@@ -205,13 +205,16 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     if not columns:
         columns = []
 
-    kwargs = {}
-    if date_column:
-        kwargs['parse_dates'] = [date_column]
-        kwargs['infer_datetime_format'] = True
-
-    df = pd.read_table(data, sep=data_sep, index_col=id_index, header=0, **kwargs)
+    df = pd.read_table(data, sep=data_sep, index_col=id_index, header=0)
     df.index = df.index.map(str)
+
+    if date_column and date_column not in df.columns:
+        raise ValueError('The date column {} not found among the annotation columns: {}.'
+                         .format(date_column, quote(df.columns)))
+    if df[date_column].dtype == float:
+        df[date_column] = pd.to_datetime(df[date_column], format='%Y.0')
+    else:
+        df[date_column] = pd.to_datetime(df[date_column], infer_datetime_format=True)
 
     unknown_columns = (set(columns) | set(copy_columns)) - set(df.columns)
     if unknown_columns:
@@ -265,9 +268,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
         logging.info("Dates vary between {} and {}.".format(min_date, max_date))
         root = _past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
                          columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
-                         tip_size_threshold=tip_size_threshold,
-                         min_date=min_date,
-                         max_date=max_date)
+                         tip_size_threshold=tip_size_threshold, min_date=min_date, max_date=max_date)
 
     if using_temp_dir:
         shutil.rmtree(work_dir)

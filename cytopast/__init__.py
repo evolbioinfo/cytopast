@@ -81,7 +81,6 @@ def date_tips(tree, date_df):
                 dist2 = get_dist_to_root(id2tip[id2])
                 rate = (_get_date(date2) - _get_date(date1)) / (dist2 - dist1)
                 rates.append(rate)
-                print(dist2, dist1, date2, date1, rate)
             rate = np.mean(rates)
 
             for id in set(id2tip.keys()) - set(date_df.index):
