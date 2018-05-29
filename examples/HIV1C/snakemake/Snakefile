@@ -1,0 +1,937 @@
+import os
+
+# To run locally:
+# snakemake --keep-going --cores 4
+
+configfile: "config.yaml"
+localrules: all, tnt
+#ruleorder: pastml_top_drm_loc > pastml_top_drm > pastml_drm > pastml_mult_loc > pastml_loc > date > collapse
+
+folder = os.path.abspath(config["folder"])
+data_dir = os.path.join(folder, config['data_dir'])
+fasta_la = os.path.join(data_dir, config['fasta_la'])
+fasta_la_c = os.path.join(data_dir, 'aln.la.c.fa')
+fasta_phy = os.path.join(data_dir, config['fasta_phylotype'])
+data_phy = os.path.join(data_dir, config['data_phylotype'])
+data_la = os.path.join(data_dir, 'data_la.tab')
+data = os.path.join(data_dir, 'data.tab')
+metadata = os.path.join(data_dir, 'metadata.tab')
+metadata_loc = os.path.join(data_dir, 'metadata_loc.tab')
+metadata_loc_drm = os.path.join(data_dir, 'metadata_loc_drm.tab')
+fasta_phy_ids = os.path.join(data_dir, 'aln.phy.c.outgroup.fa')
+fa = os.path.join(data_dir, 'aln.fa')
+aln = os.path.join(data_dir, 'alignment.fa')
+
+ns = range(5)
+ms = [100, 200, 300]
+
+maps_dir = 'nondated_maps'
+n=5
+
+rule all:
+    input:
+#        expand(os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_{loc}.html'), n=range(n), type='phyml', model='F81', loc='Int-region'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_{loc}.html'), n=range(n), type='fast', model='F81', loc='Location'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'), n=range(n), type='fast', model='F81', loc='Location', m=2),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM', '{model}', '{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'), n=range(n), type='fast', model='F81', DRM='RT:D67N'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{loc}', '{model}', '{DRM}_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type='fast', model='F81', DRM='RT:D67N', loc='Location'),
+
+rule la_metadata:
+    """Keep only C sequences and update the ids"""
+    input:
+        fasta = fasta_la
+    output:
+        fasta = fasta_la_c,
+        data = data_la
+    params:
+        mem = 2000,
+        name = 'la_filter'
+    threads: 1
+    run:
+        import pandas as pd
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+        from Bio.Seq import Seq
+        import re
+
+        sequences = [_ for _ in SeqIO.parse(input.fasta, "fasta", alphabet=generic_dna) if _.id.startswith('C.')]
+        SeqIO.write((SeqIO.SeqRecord(id=re.search(r'[^.]+$', seq.id)[0],  seq=seq.seq, description='') for seq in sequences),
+                    output.fasta, "fasta")
+
+        df = pd.DataFrame(data=[[_.id] for _ in sequences], index=[re.search(r'[^.]+$', _.id)[0] for _ in sequences], columns=['Name'])
+        def get_date(name):
+            date = re.sub(r'\..*', '', re.sub(r'^[AC]\.\w+\.', '', name))
+            if date == 'x':
+                return None
+            if date.startswith('0') or date.startswith('1'):
+                return '20' + date
+            return '19' + date
+
+        def get_loc(name):
+            loc = re.sub(r'\..*', '', re.sub(r'^[AC]\.', '', name))
+            if loc == 'x':
+                return None
+            return loc
+
+        def get_st(name):
+            st = re.sub(r'\..*', '', name)
+            if st == 'x':
+                return None
+            return st
+
+        df['Year'] = df['Name'].map(get_date)
+        df['Country Code'] = df['Name'].map(get_loc)
+        df['Subtype'] = df['Name'].map(get_st)
+
+        df.to_csv(output.data, sep='\t', header=True, index=True, index_label='Access Number')
+
+
+rule rename_phy:
+    """Update the ids"""
+    input:
+        fasta = fasta_phy,
+        data = data_phy
+    output:
+        fasta = fasta_phy_ids,
+    params:
+        mem = 2000,
+        name = 'phy_renamer'
+    threads: 1
+    run:
+        import pandas as pd
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+        from Bio.Seq import Seq
+
+        id2acc = pd.read_table(input.data, header=0, index_col=0)['Access Number'].to_dict()
+
+        SeqIO.write((SeqIO.SeqRecord(id=id2acc[seq.id],  seq=seq.seq, description='')
+                    for seq in SeqIO.parse(input.fasta, "fasta", alphabet=generic_dna)),
+                    output.fasta, "fasta")
+
+
+rule merge_aln:
+    '''Merges LA and Phylotype alignment'''
+    input:
+        fa_phy = fasta_phy_ids,
+        fa_la = fasta_la_c,
+    output:
+        fa = fa,
+    params:
+        mem = 2000,
+        name = 'aln_merge',
+    threads: 8
+    run:
+        shell("""
+            mafft --thread {threads} --memsave --retree 1 --maxiterate 0 --add {input.fa_la} --keeplength {input.fa_phy} > {output.fa}
+        """)
+
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+        from Bio.Seq import Seq
+
+        unique_sequences = []
+        ids = set()
+        for seq in SeqIO.parse(output.fa, "fasta", alphabet=generic_dna):
+            if seq.id in ids:
+                continue
+            ids.add(seq.id)
+            unique_sequences.append(seq)
+
+        SeqIO.write(unique_sequences, output.fa, "fasta")
+
+
+rule merge_md:
+    '''Merges LA and Phylotype metadata'''
+    input:
+        data_phy = data_phy,
+        data_la = data_la
+    output:
+        data = data,
+    params:
+        mem = 2000,
+        name = 'md_merge',
+    threads: 8
+    run:
+        import pandas as pd
+        from hdx.location.country import Country
+
+        df_phy = pd.read_table(input.data_phy, header=0)[['Access Number', 'Country Code', 'Year', 'Subtype', 'Name']]
+        df_phy.index = df_phy['Access Number']
+        df_phy.drop(['Access Number'], axis=1, inplace=True)
+
+        df_la = pd.read_table(input.data_la, header=0, index_col=0)
+        df = pd.concat([df_la, df_phy])
+        df = df[~df.index.duplicated(keep='first')]
+        df.to_csv(output.data, sep='\t', header=True, index=True, index_label='Access Number')
+
+rule enrich_loc_info:
+    '''Adds country information'''
+    input:
+        data = metadata,
+    output:
+        data = metadata_loc,
+    params:
+        mem = 2000,
+        name = 'loc_md',
+    threads: 8
+    run:
+        import pandas as pd
+        from hdx.location.country import Country
+
+        df = pd.read_table(input.data, header=0, index_col=0)
+
+        # Add Location info
+        countries = df['Country Code'].unique()
+        country2iso3 = {_: Country.get_iso3_country_code_fuzzy(_)[0] for _ in countries if not pd.isna(_)}
+        iso32info = {_: Country.get_country_info_from_iso3(_) for _ in country2iso3.values()}
+
+        def get_location(_):
+            if _ not in iso32info:
+                return None
+            info = iso32info[_]
+            region = info['Region Name']
+            if region == 'Africa':
+                if info['Country or Area'] == 'South Africa':
+                    return 'South Africa'
+                return info['Intermediate Region Name'] if info['Intermediate Region Name'] else info['Sub-region Name']
+            if region == 'Americas':
+                return info['Sub-region Name']
+            return region
+
+        df['Country ISO3'] = df['Country Code'].apply(lambda _: country2iso3[_] if _ in country2iso3 else None)
+        df['Continent'] = df['Country ISO3'].apply(lambda _: iso32info[_]['Region Name'] if _ in iso32info else None)
+        df['Country'] = df['Country ISO3'].apply(lambda _: iso32info[_]['Country or Area'] if _ in iso32info else None)
+        df['Sub-region'] = df['Country ISO3'].apply(lambda _: iso32info[_]['Sub-region Name'] if _ in iso32info else None)
+        df['Region'] = df['Country ISO3'].apply(lambda _: iso32info[_]['Region Name'] if _ in iso32info else None)
+        df['Location'] = df['Country ISO3'].apply(get_location)
+        df['Int-region'] = df['Country ISO3'].apply(lambda _: (iso32info[_]['Intermediate Region Name'] \
+                                                               if iso32info[_]['Intermediate Region Name'] \
+                                                               else iso32info[_]['Sub-region Name'])
+                                                              if _ in iso32info else None)
+        df['IsDeveloped'] = df['Country ISO3'].apply(
+            lambda _: iso32info[_]['Developed / Developing Countries']
+            if _ in iso32info and 'Developed / Developing Countries' in iso32info[_] else None)
+        df.to_csv(output.data, sep='\t', header=True, index=True)
+
+
+rule enrich_drm_info:
+    '''Prettify DRM information'''
+    input:
+        data = metadata_loc,
+    output:
+        data = metadata_loc_drm,
+    params:
+        mem = 2000,
+        name = 'drm_md',
+    threads: 8
+    run:
+        import pandas as pd
+
+        df = pd.read_table(input.data, header=0, index_col=0)
+        for mutation in (_ for _ in df.columns if _.startswith('RT:') or _.startswith('PR:')):
+            df[mutation] = df[mutation].fillna(False).astype(bool).map({True: 'resistant', False: 'sensitive', None: 'sensitive'})
+        df.to_csv(output.data, sep='\t', header=True, index=True)
+
+
+
+rule drm_data:
+    '''
+    Extract information about DRMs from Stanford DB (with sierra) and reformat it into a table.
+    '''
+    input:
+        fasta = fa,
+    output:
+        gql = temp(os.path.join(data_dir, 'sierra.gql')),
+        json = temp(os.path.join(data_dir, 'pol.json')),
+        tab = os.path.join(data_dir, 'drm_data.tab')
+    params:
+        mem = 2000,
+        name = 'sierra',
+    threads: 1
+    run:
+        shell("""
+            echo '''inputSequence {{
+    header
+}},
+subtypeText,
+alignedGeneSequences {{
+    gene {{ name }},
+    SDRMs:mutations(filterOptions:[SDRM]) {{
+        text
+    }}
+}}''' > {output.gql}
+
+            sierrapy fasta {input.fasta} -o {output.json} -q {output.gql}
+        """)
+
+        import os
+        import pandas
+        from functools import reduce
+
+        ALIGNED_GENE_SEQ_COL = 'alignedGeneSequences'
+        INPUT_SEQUENCE_COL = 'inputSequence'
+        SDRMS_COL = 'SDRMs'
+        GENE_COL = 'gene'
+
+        df = pandas.read_json(output.json)
+        df[INPUT_SEQUENCE_COL] = df[INPUT_SEQUENCE_COL].apply(lambda d: d['header'])
+        df.set_index(keys=INPUT_SEQUENCE_COL, drop=True, inplace=True)
+
+        # split a list of genes inside the alignedGeneSequences column into several rows
+        # then split the dictionaries inside s rows into several columns
+        gene_df = df[ALIGNED_GENE_SEQ_COL].apply(pandas.Series, 1).stack().apply(pandas.Series)
+        gene_df[GENE_COL] = gene_df[GENE_COL].apply(lambda d: d['name']).astype('category', ordered=True)
+        gene_df[SDRMS_COL] = gene_df[SDRMS_COL].apply(lambda l: [d['text'] for d in l])
+        gene_df.index = gene_df.index.droplevel(-1)
+
+        # Put all the DRMs together and make them columns
+        gene_df[SDRMS_COL] = \
+            gene_df.apply(lambda row: {'%s:%s' % (row[GENE_COL], m): True for m in row[SDRMS_COL]}, axis=1)
+
+        def join_dicts(ds):
+            return reduce(lambda d1, d2: {**d1 , **d2}, ds, {})
+
+        gene_df = gene_df.groupby(gene_df.index)[SDRMS_COL].apply(list).apply(join_dicts).apply(pandas.Series)
+
+        lbls_to_drop = [ALIGNED_GENE_SEQ_COL]
+        df.drop(labels=lbls_to_drop, axis=1).join(gene_df).to_csv(output.tab, sep='\t')
+
+
+rule metadata:
+    '''
+    Reformat the information about DRMs extracted from Stanford DB (with sierra) together with other metadata.
+    '''
+    input:
+        drm_tab = os.path.join(data_dir, 'drm_data.tab'),
+        data = data,
+        fa = fa
+    output:
+        data = metadata,
+        fa = aln
+    params:
+        mem = 2000,
+        name = 'metadata'
+    threads: 1
+    run:
+        import numpy as np
+        import pandas as pd
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+        from Bio.Seq import Seq
+
+        # Read and fix DRM metadata
+        df = pd.read_table(input.drm_tab, index_col=0, header=0)
+        df['Sierra subtype'] = df['subtypeText'].map(lambda s: s[0])
+        df.drop(['subtypeText'], axis=1, inplace=True)
+        df = df.join(pd.read_table(input.data, index_col=0, header=0), how='outer')
+
+        df = df[df['Subtype'] == df['Sierra subtype']]
+        df.drop(['Sierra subtype'], axis=1, inplace=True)
+
+        df.to_csv(output.data, sep='\t', header=True, index=True, index_label='id')
+
+        SeqIO.write((_ for _ in SeqIO.parse(input.fa, "fasta", alphabet=generic_dna) if _.id in df.index), output.fa, "fasta")
+
+rule clean_alignment:
+    '''
+    Removes the positions of DRMs from the alignment, in order not to influence the evolutionary history by drug
+    selective pressure.
+    '''
+    input:
+        fasta = '{bf}alignment.fa',
+        data = metadata
+    output:
+        fasta = '{bf}alignment.nodrm.fa',
+    params:
+        mem = 1000,
+        name = 'clean',
+        PR_start_pos = 0,
+        RT_start_pos = 99,
+    threads: 1
+    run:
+        import logging
+        import re
+        import pandas as pd
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+        from Bio.Seq import Seq
+
+        def clean_sequences(sequences, pos):
+            for sequence in sequences:
+                seq = str(sequence.seq)
+                res = []
+                end = 0
+                for start in pos:
+                    res += seq[end: (start - 1) * 3]
+                    end = start * 3
+                res += seq[end:]
+                sequence.seq = Seq(''.join(res), generic_dna)
+                yield sequence
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S",
+                            filename=None)
+        DRMS = list(pd.read_table(input.data, index_col=0).columns)
+        pos = sorted(params.PR_start_pos + int(re.findall('\d+', _)[0]) for _ in DRMS if 'PR:' in _) \
+              + sorted(params.RT_start_pos + int(re.findall('\d+', _)[0]) for _ in DRMS if 'RT:' in _)
+
+        count = SeqIO.write(clean_sequences(SeqIO.parse(input.fasta, "fasta", alphabet=generic_dna), pos),
+                            output.fasta, "fasta")
+        logging.info("Converted %d records to fasta" % count)
+
+
+rule convert_alignment:
+    '''
+    Filter and convert a fasta alignment to another format.
+    '''
+    input:
+        fasta = '{bf}alignment{af}.fa'
+    output:
+        alignment = '{bf}alignment{af}.{format}'
+    params:
+        mem = 1000,
+        name = 'aln_{format}',
+        format = '{format}'
+    threads: 1
+    run:
+        import logging
+        from collections import Counter
+        from Bio import SeqIO
+        from Bio.Alphabet import generic_dna
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        sequences = list(SeqIO.parse(input.fasta, "fasta", alphabet=generic_dna))
+        common_len = Counter(len(seq.seq) for seq in sequences).most_common(n=1)[0][0]
+        bad_sequences = [(seq.id, len(seq.seq)) for seq in sequences if len(seq.seq) != common_len]
+        if bad_sequences:
+            logging.error('Sequences {} have bad length'.format(bad_sequences))
+            sequences = [seq for seq in sequences if len(seq.seq) == common_len]
+        if params.format == 'tnt':
+            with open(output.alignment, 'w+') as tnt:
+                tnt.write("xread\n'Sequences'\n")
+                tnt.write('%d %d\n' % (len(sequences[0].seq), len(sequences)))
+                for seq in sequences:
+                    tnt.write('%s %s\n' % (seq.id, seq.seq))
+                tnt.write(';\n')
+            count = len(sequences)
+        else:
+            count = SeqIO.write(sequences, output.alignment, params.format)
+        logging.info("Converted {} records to {}".format(count, params.format))
+
+rule tnt:
+    '''
+    Generates most parsimonious trees with TNT.
+    The tnt script is based on the explanations from here:
+    http://phylobotanist.blogspot.fr/2015/03/parsimony-analysis-in-tnt-using-command.html
+    '''
+    input:
+        os.path.join(data_dir, 'alignment.nodrm.tnt')
+    output:
+        os.path.join(data_dir, 'pars_trees.nex'),
+    params:
+        mem = 1000,
+        name = 'tnt',
+        tnt = config['tnt'],
+        num_trees = n,
+        dir_name = data_dir,
+        file_name = 'pars_trees.nex'
+    resources: tnt=1
+    threads: 4
+    run:
+        # for some reason TNT does not process a full path to the result tree file correctly
+        # so we need to cd to its dir and use the local path instead
+
+        shell("""
+            cd {params.dir_name}
+
+            echo '''mxram 1024;
+nstates DNA;
+nstates NOGAPS;
+procedure {input};
+log {output}.log;
+hold {params.num_trees};
+mult;
+bbreak=tbr;
+taxname=;
+export - {params.file_name};
+quit
+
+''' > {output}.run
+            {params.tnt} procedure {output}.run
+            rm {output}.run
+            rm {output}.log
+        """)
+
+rule nex2nwk:
+    '''
+    Converts trees from a nexus file to multiple newick files.
+    '''
+    input:
+        trees = os.path.join(data_dir, 'pars_trees.nex')
+    output:
+        expand(os.path.join(data_dir, '{n}', 'pars_tree.nwk'), n=range(n)),
+        log = os.path.join(data_dir, 'pars_trees.log')
+    threads:
+        1
+    params:
+        mem = 1000,
+        tree_pattern = os.path.join(data_dir, '%s', 'pars_tree.nwk'),
+        name = 'nex2nwk',
+    run:
+
+        import logging
+        import os
+        from Bio.Phylo import NexusIO, write
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        i = 0
+        for tree in NexusIO.parse(input.trees):
+            os.makedirs(os.path.dirname(params.tree_pattern % i), exist_ok=True)
+            write([tree], params.tree_pattern % i, 'newick', plain=True)
+            i += 1
+        with open(output.log, 'w+') as f:
+            f.write('Converted %d trees to newick' % i)
+
+rule fasttree:
+    '''
+    Given a layout, reconstructs a tree in quick and dirty way.
+    '''
+    input:
+        aln = os.path.join(data_dir, 'alignment.nodrm.phylip'),
+        tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
+    output:
+        os.path.join(data_dir, '{n}', 'fast_tree.nwk')
+    threads: 6
+    params:
+        mem = 8000,
+        name='fastt_{n}',
+        fasttree = config['fasttree']
+    run:
+        shell("""
+            {params.fasttree} -gamma -nt -gtr -cat 6 -intree {input.tree} < {input.aln} > {output}
+        """)
+
+rule phyml:
+    '''
+    Given a group of tips that are close together reconstructs the subtrees for them.
+    '''
+    input:
+        aln = os.path.join(data_dir, 'alignment.nodrm.phylip'),
+        tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
+    output:
+        tree = os.path.join(data_dir, '{n}', 'phyml_tree.nwk'),
+        log = temp(os.path.join(data_dir, '{n}', 'phyml_tree.log'))
+    threads:
+        1
+    params:
+        mem = 4000,
+        name = 'ph_{n}',
+        phyml = config['phyml'],
+        aln = os.path.join(data_dir, '{n}', 'aln_sequences_{n}.phylip')
+    run:
+        shell("""
+            cp {input.aln} {params.aln}
+            {params.phyml} -i {params.aln} -d nt -m GTR -o tlr -f e -t e -c 6 -a e -s RAND -u {input.tree}
+            mv {params.aln}_phyml_tree* {output.tree}
+            mv {params.aln}_phyml_stats* {output.log}
+            rm {params.aln}
+        """)
+
+rule extract_dates:
+    '''
+    Reformat metadata into date file readable by LSD.
+    '''
+    input:
+        metadata = metadata
+    output:
+        tab = os.path.join(data_dir, 'dates.tab')
+    params:
+        mem = 1000,
+        name = 'dates',
+        date_col = 'Year',
+        c_tip = 'b(1980,2017)'
+    threads: 1
+    run:
+        import pandas as pd
+
+        date_df = pd.read_table(input.tab, index_col=0)[[params.date_col]]
+        date_df.fillna(params.c_tip, inplace=True)
+        with open(output.tab, 'w+') as f:
+            f.write('%d\n' % date_df.shape[0])
+
+        date_df.to_csv(output.tab, sep='\t', header=False, mode='a')
+
+rule get_seq_ids:
+    '''
+    Extract sequence ids of interest.
+    '''
+    input:
+        data = metadata
+    output:
+        data = os.path.join(data_dir, 'ids_{subtype}.txt')
+    params:
+        mem = 500,
+        name = 'ids_{subtype}',
+        col_value = '{subtype}',
+        col_name = 'Subtype',
+        sample = 0
+    threads: 1
+    run:
+        import logging
+        import pandas as pd
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        df = pd.read_table(input.data, index_col=0)
+        df = df[df[params.col_name] == params.col_value]
+        logging.info('Extracted %d ids matching the specified criteria' % len(df))
+        if params.sample and params.sample > 0:
+            df = df.sample(n=params.sample)
+            logging.info('Sampled %d ids' % len(df))
+        with open(output.data, 'w+') as f:
+            f.write('\n'.join(list(df.index.map(str))))
+
+rule root:
+    '''
+    Root a tree using an outgroup.
+    '''
+    input:
+        tree = '{tree}.nwk',
+        ids = [os.path.join(data_dir, 'ids_C.txt')]
+    output:
+        tree = '{tree}.rooted.nwk'
+    threads: 1
+    params:
+        mem = 500,
+        name='root',
+        is_outgroup=False
+    run:
+        import logging
+        import pandas as pd
+        from ete3 import Tree
+        from ete3.parser.newick import write_newick
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S",
+                            filename=None)
+
+        def root_tree(tr, out_ids=None, in_ids=None, keep_outgroup=False):
+            leaf_names = {l.name for l in tr.iter_leaves()}
+            if out_ids:
+                out_ids &= leaf_names
+                in_ids = leaf_names - out_ids
+            elif in_ids:
+                in_ids &= leaf_names
+                out_ids = leaf_names - in_ids
+            else:
+                raise ValueError('Either ingroup or outgroup ids must be specified!')
+            n_out = len(out_ids)
+            n_in = len(in_ids)
+            logging.info('Trying to set {} elements as outgroup'.format(len(out_ids)))
+            inverse = False
+            if len(out_ids) == 1:
+                outgroup_id = out_ids.pop()
+                ancestor = next(l for l in tr.iter_leaves() if l.name == outgroup_id)
+            else:
+                ancestor = tr.get_common_ancestor(*out_ids)
+                o_clu_len = len(ancestor.get_leaves())
+                if o_clu_len != n_out:
+                    inverse = True
+                    ancestor = tr.get_common_ancestor(*in_ids)
+                    i_clu_len = len(ancestor.get_leaves())
+                    if i_clu_len != n_in:
+                        raise ValueError('The outgroup is incorporated inside the tree: '
+                                         '%d outgroup sequences cluster inside a %d-leaf subtree, ' % (n_out, o_clu_len)
+                                         + 'while %d sequences of interest cluster inside a %d-leaf subtree' % (n_in, i_clu_len))
+            logging.info('%s:\n%s' % (('Our tree' if inverse else 'Ancestor'), ancestor.get_ascii()))
+            tr.set_outgroup(ancestor)
+            left, right = tr.children
+            if ancestor not in tr.children:
+                raise ValueError('The rerooting did not work out!!!')
+            if keep_outgroup:
+                logging.info('Keeping the outgroup')
+                return tr
+            if inverse:
+                tr = ancestor
+            else:
+                tr = left if right == ancestor else right
+            tr.dist = 0
+            tr.up = None
+            logging.info('The rooted tree contains %d leaves instead of %d' % (len(tr.get_leaves()), n_in + n_out))
+
+            # If the root contains many children it will be considered as not rooted, so add a fake one if needed
+            children = list(tr.children)
+            if len(children) > 2:
+                fake_child = tr.add_child(dist=0)
+                for child in children[1:]:
+                    tr.remove_child(child)
+                    fake_child.add_child(child)
+            return tr
+
+        fmt = 2
+        try:
+            tr = Tree(input.tree, format=fmt)
+        except:
+            fmt = 1
+            tr = Tree(input.tree)
+
+        for group in input.ids:
+            ids = set(pd.read_table(group, index_col=0, header=None).index.map(str))
+            out_ids, in_ids = None, None
+            if params.is_outgroup:
+                out_ids = ids
+            else:
+                in_ids = ids
+            tr = root_tree(tr, out_ids=out_ids, in_ids=in_ids)
+
+        nwk = write_newick(tr, format_root_node=True, format=fmt)
+        with open(output.tree, 'w+') as f:
+            f.write('%s\n' % nwk)
+
+rule collapse:
+    '''
+    Collapses branches using a certain criterion.
+    '''
+    input:
+        tree = '{tree}.nwk',
+    output:
+        tree = '{tree}.collapsed_{feature}_{threshold}.nwk',
+    threads: 1
+    params:
+        mem = 500,
+        name='collapse_{feature}_{threshold}',
+        threshold='{threshold}',
+        feature='{feature}'
+    run:
+        import logging
+        from ete3 import Tree
+        from ete3.parser.newick import write_newick
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        try:
+            tr = Tree(input.tree, format=2)
+        except:
+            tr = Tree(input.tree)
+
+        try:
+            threshold = float(params.threshold)
+        except:
+            # may be it's a string threshold then
+            threshold = params.threshold
+
+        num_collapsed = 0
+        for n in list(tr.traverse('postorder')):
+            if not n.is_root():
+                for child in n.children:
+                    if not child.is_leaf() and getattr(child, params.feature) <= threshold:
+                        n.remove_child(child)
+                        for grandchild in child.children:
+                            n.add_child(grandchild)
+                        num_collapsed += 1
+        logging.info('Collapsed {} branches with {} <= {}'.format(num_collapsed, params.feature, threshold))
+        nwk = write_newick(tr, format_root_node=True, format=1)
+        with open(output.tree, 'w+') as f:
+            f.write('%s\n' % nwk)
+
+rule date:
+    '''
+    Date a tree.
+    '''
+    input:
+        tree = '{tree}.nwk',
+        dates = os.path.join(data_dir, 'dates.tab')
+    output:
+        tree = '{tree}.dated.nwk',
+        log = '{tree}.lsd.log',
+    threads:
+        1
+    params:
+        mem = 2000,
+        name = 'date',
+        lsd = config['lsd']
+    run:
+        shell("""
+            {params.lsd} -i {input.tree} -d {input.dates} -v 2 -c -s 882 -f 1000 -t 1e-3
+            mv {input.tree}.result.date.newick {output.tree}
+            mv {input.tree}.result {output.log}
+            rm {input.tree}.result.*
+        """)
+
+rule top_drms:
+    '''
+    Selects n most common SDRMs.
+    '''
+    input:
+        data = metadata
+    output:
+        top_drm_file = os.path.join(data_dir, 'top_{n}_SDRMS.tab')
+    threads:
+        1
+    params:
+        mem = 1000,
+        name = 'top_{n}',
+        num_mutations = '{n}'
+    run:
+        import logging
+        import pandas as pd
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+
+        df = pd.read_table(input.data)
+        top_mutations = sorted([col for col in df.columns if 'RT:' in col or 'PR:' in col],
+                               key=lambda drm: len(df[df[drm].isnull()]))[:int(params.num_mutations)]
+        with open(output.top_drm_file, 'w+') as f:
+            f.write(' '.join("'{}'".format(drm) for drm in top_mutations))
+
+
+rule pastml_tree:
+    '''
+    Copies a tree with a certain name into a pastml tree
+    '''
+    input:
+        # collapse less than a day distances: 1 / 365 = 0.0027
+        tree=os.path.join(data_dir, '{n}', '{type}_tree.rooted.collapsed_support_0.5.collapsed_dist_0.nwk'),
+    output:
+        tree=os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+    threads:
+        1
+    params:
+        mem = 1000,
+        name = 'copy_{n}'
+    run:
+        shell("cp {input.tree} {output.tree}")
+
+rule pastml_top_drms_loc:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        data = metadata_loc_drm,
+        top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
+    output:
+        map = os.path.join(data_dir, maps_dir, '{type}', '{loc}_{m}_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html')
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        loc = '{loc}',
+        model = '{model}',
+        date_col = 'Year'
+    run:
+        with open(input.top_drm_file, 'r') as f:
+            columns=f.read().split(' ')
+
+        shell("""
+            source activate cytopast
+            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
+            --model {params.model} --columns {columns} {params.loc} --name_column {params.loc} -v \
+            --date_column {params.date_col}
+        """)
+
+rule pastml_top_drms:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        data = metadata_loc_drm,
+        top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
+    output:
+        map = os.path.join(data_dir, maps_dir, '{type}', '{m}_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html')
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        model = '{model}',
+        date_col = 'Year'
+    run:
+        with open(input.top_drm_file, 'r') as f:
+            columns=f.read().split(' ')
+
+        shell("""
+            source activate cytopast
+            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
+            --model {params.model} --columns {columns} --verbose \
+            --date_column {params.date_col}
+        """)
+
+rule pastml_drm:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        data = metadata_loc_drm,
+    output:
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM', '{model}', '{DRM}', 'map_{n}_{type}_{model}_{DRM}.html')
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        model = '{model}',
+        date_col = 'Year',
+        drm = '{DRM}'
+    run:
+        shell("""
+            source activate cytopast
+            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
+            --model {params.model} --columns {params.drm} --verbose \
+            --date_column {params.date_col}
+        """)
+
+rule pastml_drm_loc:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        data = metadata_loc_drm,
+    output:
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{loc}', '{model}', '{DRM}_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html')
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        model = '{model}',
+        date_col = 'Year',
+        drm = '{DRM}',
+        loc = '{loc}'
+    run:
+        shell("""
+            source activate cytopast
+            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
+            --model {params.model} --columns {params.drm} {params.loc} --verbose \
+            --date_column {params.date_col} --name_column {params.loc}
+        """)
+
+rule pastml_loc:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        data = metadata_loc_drm
+    output:
+        map = os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_{loc}.html')
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        loc = '{loc}',
+        model = '{model}',
+        dir = os.path.join(data_dir, 'pastml'),
+        date_col = 'Year'
+    run:
+        shell("""
+            source activate cytopast
+            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
+            --model {params.model} --columns {params.loc} --name_column {params.loc} -v --work_dir {params.dir} \
+            --date_column {params.date_col}
+        """)
