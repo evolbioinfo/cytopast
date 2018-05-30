@@ -86,7 +86,8 @@ def date_tips(tree, date_df):
             for id in set(id2tip.keys()) - set(date_df.index):
                 id2tip[id].add_feature(DATE,
                                        min(min_date, max(max_date,
-                                                         int(_get_date(date1) + rate * (get_dist_to_root(id2tip[id]) - dist1)))))
+                                                         int(_get_date(date1) + rate * (
+                                                                     get_dist_to_root(id2tip[id]) - dist1)))))
 
     return min(_.date for _ in id2tip.values()), max(_.date for _ in id2tip.values())
 
@@ -222,7 +223,6 @@ def get_states(n, categories):
 
 
 def compress_tree(tree, categories, can_merge_diff_sizes=True, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS):
-
     for n in tree.traverse('postorder'):
         n.add_feature(TIPS_INSIDE, defaultdict(list))
         n.add_feature(TIPS_BELOW, defaultdict(list))
@@ -379,7 +379,10 @@ def remove_mediators(tree, get_states):
         child_states = get_states(child)
         if set(states.keys()) == set(parent_states.keys()) == set(child_states.keys()):
             compatible = next((False for (key, state) in states.items()
-                               if state and (state != parent_states[key] or state != child_states[key])), True)
+                               # if the mediator has this key's state it should be the same as of its parent and child
+                               if (state and (state != parent_states[key] or state != child_states[key]))
+                               # otherwise it should hesitate between the parent's and the child's one
+                               or (not state and parent_states[key] == child_states[key])), True)
         else:
             compatible = set(states.items()) == set(parent_states.items()) | set(child_states.items())
         if compatible:

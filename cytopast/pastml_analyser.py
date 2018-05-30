@@ -156,7 +156,7 @@ def quote(str_list):
 
 def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, data_sep='\t', id_index=0, columns=None,
                     name_column=None, work_dir=None, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
-                    model=JC, prediction_method=MARGINAL_APPROXIMATION,
+                    model=F81, prediction_method=MARGINAL_APPROXIMATION,
                     copy_columns=None, verbose=False, date_column=None):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
@@ -183,7 +183,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     (if not specified a temporary dir will be created).
     :param tip_size_threshold: int (optional, by default is 25), remove the tips of size less than threshold-th
     from the compressed map (set to inf to keep all).
-    :param model: str (optional, default is pastml.JC), model to be used by PASTML.
+    :param model: str (optional, default is pastml.F81), model to be used by PASTML.
     :param prediction_method: str (optional, default is pastml.MARGINAL_APPROXIMATION),
     ancestral state prediction method to be used by PASTML.
     :param verbose: bool, print information on the progress of the analysis.
@@ -211,10 +211,11 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     if date_column and date_column not in df.columns:
         raise ValueError('The date column {} not found among the annotation columns: {}.'
                          .format(date_column, quote(df.columns)))
-    if df[date_column].dtype == float:
-        df[date_column] = pd.to_datetime(df[date_column], format='%Y.0')
-    else:
-        df[date_column] = pd.to_datetime(df[date_column], infer_datetime_format=True)
+    if date_column:
+        if df[date_column].dtype == float:
+            df[date_column] = pd.to_datetime(df[date_column], format='%Y.0')
+        else:
+            df[date_column] = pd.to_datetime(df[date_column], infer_datetime_format=True)
 
     unknown_columns = (set(columns) | set(copy_columns)) - set(df.columns)
     if unknown_columns:
@@ -367,8 +368,8 @@ def main():
     tree_group.add_argument('-t', '--tree', help="the input tree in newick format.", type=str, required=True)
 
     pastml_group = parser.add_argument_group('ancestral-state inference-related arguments')
-    pastml_group.add_argument('-m', '--model', required=False, default=JC, choices=[JC, F81], type=str,
-                              help='the evolutionary model to be used by PASTML, by default {}.'.format(JC))
+    pastml_group.add_argument('-m', '--model', required=False, default=F81, choices=[JC, F81], type=str,
+                              help='the evolutionary model to be used by PASTML, by default {}.'.format(F81))
     pastml_group.add_argument('--prediction_method', required=False, default=MARGINAL_APPROXIMATION,
                               choices=[MARGINAL_APPROXIMATION, MARGINAL, MAX_POSTERIORI, JOINT,
                                        DOWNPASS, ACCTRAN, DELTRAN], type=str,
