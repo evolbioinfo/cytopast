@@ -5,7 +5,6 @@ import os
 
 configfile: "config.yaml"
 localrules: all, tnt
-#ruleorder: pastml_top_drm_loc > pastml_top_drm > pastml_drm > pastml_mult_loc > pastml_loc > date > collapse
 
 folder = os.path.abspath(config["folder"])
 data_dir = os.path.join(folder, config['data_dir'])
@@ -22,19 +21,19 @@ fasta_phy_ids = os.path.join(data_dir, 'aln.phy.c.outgroup.fa')
 fa = os.path.join(data_dir, 'aln.fa')
 aln = os.path.join(data_dir, 'alignment.fa')
 
-ns = range(5)
-ms = [100, 200, 300]
-
 maps_dir = 'nondated_maps'
 n=5
+m=3
+DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N']
+tree_type = 'fast'
 
 rule all:
     input:
-#        expand(os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_{loc}.html'), n=range(n), type='phyml', model='F81', loc='Int-region'),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_{loc}.html'), n=range(n), type='fast', model='F81', loc='Location'),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'), n=range(n), type='fast', model='F81', loc='Location', m=2),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM', '{model}', '{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'), n=range(n), type='fast', model='F81', DRM='RT:D67N'),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{loc}', '{model}', '{DRM}_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type='fast', model='F81', DRM='RT:D67N', loc='Location'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html'), n=range(n), type=tree_type, model='F81', loc='Location'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'), n=range(n), type=tree_type, model='F81', loc='Location', m=m),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'), n=range(n), type=tree_type, model='F81', DRM=DRMS),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type=tree_type, model='F81', DRM=DRMS, loc='Location'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html'), n=range(n), type=tree_type, model='F81', m=m, loc='Location'),
 
 rule la_metadata:
     """Keep only C sequences and update the ids"""
@@ -811,7 +810,7 @@ rule pastml_top_drms_loc:
         data = metadata_loc_drm,
         top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', '{loc}_{m}_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html')
     threads:
         4
     params:
@@ -840,7 +839,7 @@ rule pastml_top_drms:
         data = metadata_loc_drm,
         top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', '{m}_top_SDRMS', '{model}', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html')
     threads:
         4
     params:
@@ -855,7 +854,7 @@ rule pastml_top_drms:
         shell("""
             source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
-            --model {params.model} --columns {columns} --verbose \
+            --model {params.model} --columns {columns} -v \
             --date_column {params.date_col}
         """)
 
@@ -867,7 +866,7 @@ rule pastml_drm:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
         data = metadata_loc_drm,
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM', '{model}', '{DRM}', 'map_{n}_{type}_{model}_{DRM}.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html')
     threads:
         4
     params:
@@ -880,7 +879,7 @@ rule pastml_drm:
         shell("""
             source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
-            --model {params.model} --columns {params.drm} --verbose \
+            --model {params.model} --columns {params.drm} -v \
             --date_column {params.date_col}
         """)
 
@@ -892,7 +891,7 @@ rule pastml_drm_loc:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
         data = metadata_loc_drm,
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{loc}', '{model}', '{DRM}_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html')
     threads:
         4
     params:
@@ -918,7 +917,7 @@ rule pastml_loc:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
         data = metadata_loc_drm
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', '{model}', 'map_{n}_{type}_{model}_{loc}.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html')
     threads:
         4
     params:
@@ -932,6 +931,6 @@ rule pastml_loc:
         shell("""
             source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
-            --model {params.model} --columns {params.loc} --name_column {params.loc} -v --work_dir {params.dir} \
+            --model {params.model} --columns {params.loc} -v \
             --date_column {params.date_col}
         """)
