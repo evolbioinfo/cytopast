@@ -842,7 +842,6 @@ rule pastml_top_drms_loc:
         shell("""
             {src_command}
             {py_config}
-            source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {columns} {params.loc} --name_column {params.loc} -v \
             --date_column {params.date_col}
@@ -872,7 +871,6 @@ rule pastml_top_drms:
         shell("""
             {src_command}
             {py_config}
-            source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {columns} -v \
             --date_column {params.date_col}
@@ -899,7 +897,6 @@ rule pastml_drm:
         shell("""
             {src_command}
             {py_config}
-            source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {params.drm} -v \
             --date_column {params.date_col}
@@ -927,7 +924,6 @@ rule pastml_drm_loc:
         shell("""
             {src_command}
             {py_config}
-            source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {params.drm} {params.loc} --verbose \
             --date_column {params.date_col} --name_column {params.loc}
@@ -955,7 +951,6 @@ rule pastml_loc:
         shell("""
             {src_command}
             {py_config}
-            source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {params.loc} -v \
             --date_column {params.date_col}
