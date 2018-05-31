@@ -4,7 +4,7 @@ import os
 # snakemake --keep-going --cores 4
 
 # To run on tars:
-# /local/gensoft2/exe/snakemake/3.5.4/bin/snakemake --configfile /pasteur/homes/azhukova/projects/PASTML/cytopast/examples/HIV1C/snakemake/config_tars.yaml --keep-going --resources tnt=1 --cores 1 -p --cluster "sbatch -c {threads} -o {params.name}.log  -e {params.name}.log --mem {params.mem} -p dedicated --qos bioevo -A bioevo -J {params.name}" --jobs 500
+# /local/gensoft2/exe/snakemake/3.5.4/bin/snakemake --configfile /pasteur/homes/azhukova/projects/PASTML/cytopast/examples/HIV1C/snakemake/config_tars.yaml --keep-going --resources tnt=1 --cores 1 -p --cluster "sbatch -c {threads} -o {params.name}.log  -e {params.name}.log --mem {params.mem} -p bioevo --qos bioevo -A bioevo -J {params.name}" --jobs 500
 
 configfile: "config.yaml"
 localrules: all, tnt
@@ -53,6 +53,10 @@ rule la_metadata:
         name = 'la_filter'
     threads: 1
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import pandas as pd
         from Bio import SeqIO
         from Bio.Alphabet import generic_dna
@@ -103,6 +107,10 @@ rule rename_phy:
         name = 'phy_renamer'
     threads: 1
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import pandas as pd
         from Bio import SeqIO
         from Bio.Alphabet import generic_dna
@@ -160,6 +168,10 @@ rule merge_md:
         name = 'md_merge',
     threads: 8
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import pandas as pd
         from hdx.location.country import Country
 
@@ -183,6 +195,10 @@ rule enrich_loc_info:
         name = 'loc_md',
     threads: 8
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import pandas as pd
         from hdx.location.country import Country
 
@@ -233,6 +249,10 @@ rule enrich_drm_info:
         name = 'drm_md',
     threads: 8
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import pandas as pd
 
         df = pd.read_table(input.data, header=0, index_col=0)
@@ -322,6 +342,10 @@ rule metadata:
         name = 'metadata'
     threads: 1
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import numpy as np
         import pandas as pd
         from Bio import SeqIO
@@ -358,6 +382,10 @@ rule clean_alignment:
         RT_start_pos = 99,
     threads: 1
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import logging
         import re
         import pandas as pd
@@ -402,6 +430,10 @@ rule convert_alignment:
         format = '{format}'
     threads: 1
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import logging
         from collections import Counter
         from Bio import SeqIO
@@ -488,6 +520,10 @@ rule nex2nwk:
         tree_pattern = os.path.join(data_dir, '%s', 'pars_tree.nwk'),
         name = 'nex2nwk',
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
 
         import logging
         import os
@@ -565,6 +601,10 @@ rule extract_dates:
         c_tip = 'b(1980,2017)'
     threads: 1
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import pandas as pd
 
         date_df = pd.read_table(input.tab, index_col=0)[[params.date_col]]
@@ -590,6 +630,10 @@ rule get_seq_ids:
         sample = 0
     threads: 1
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import logging
         import pandas as pd
         logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
@@ -618,6 +662,10 @@ rule root:
         name='root',
         is_outgroup=False
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import logging
         import pandas as pd
         from ete3 import Tree
@@ -714,6 +762,10 @@ rule collapse:
         threshold='{threshold}',
         feature='{feature}'
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import logging
         from ete3 import Tree
         from ete3.parser.newick import write_newick
@@ -785,6 +837,10 @@ rule top_drms:
         name = 'top_{n}',
         num_mutations = '{n}'
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         import logging
         import pandas as pd
 
@@ -836,12 +892,14 @@ rule pastml_top_drms_loc:
         model = '{model}',
         date_col = 'Year'
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
         with open(input.top_drm_file, 'r') as f:
             columns=f.read().split(' ')
 
         shell("""
-            {src_command}
-            {py_config}
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {columns} {params.loc} --name_column {params.loc} -v \
             --date_column {params.date_col}
@@ -865,12 +923,15 @@ rule pastml_top_drms:
         model = '{model}',
         date_col = 'Year'
     run:
+        shell("""
+            {src_command}
+            {py_config}
+        """)
+
         with open(input.top_drm_file, 'r') as f:
             columns=f.read().split(' ')
 
         shell("""
-            {src_command}
-            {py_config}
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {columns} -v \
             --date_column {params.date_col}
