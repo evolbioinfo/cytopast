@@ -8,3 +8,6 @@ lsd: lsd
 fasttree: fasttree
 phyml: phyml
 tnt: tnt
+mafft: mafft
+src_command:
+py_config:

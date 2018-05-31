@@ -3,8 +3,14 @@ import os
 # To run locally:
 # snakemake --keep-going --cores 4
 
+# To run on tars:
+# /local/gensoft2/exe/snakemake/3.5.4/bin/snakemake --configfile /pasteur/homes/azhukova/projects/PASTML/cytopast/examples/HIV1C/snakemake/config_tars.yaml --keep-going --resources tnt=1 --cores 1 -p --cluster "sbatch -c {threads} -o {params.name}.log  -e {params.name}.log --mem {params.mem} -p dedicated --qos bioevo -A bioevo -J {params.name}" --jobs 500
+
 configfile: "config.yaml"
 localrules: all, tnt
+
+src_command = config['src']
+py_config = config['py_config']
 
 folder = os.path.abspath(config["folder"])
 data_dir = os.path.join(folder, config['data_dir'])
@@ -119,10 +125,12 @@ rule merge_aln:
     params:
         mem = 2000,
         name = 'aln_merge',
+        mafft = config['mafft']
     threads: 8
     run:
         shell("""
-            mafft --thread {threads} --memsave --retree 1 --maxiterate 0 --add {input.fa_la} --keeplength {input.fa_phy} > {output.fa}
+            {src_command}
+            {params.mafft} --thread {threads} --memsave --retree 1 --maxiterate 0 --add {input.fa_la} --keeplength {input.fa_phy} > {output.fa}
         """)
 
         from Bio import SeqIO
@@ -250,6 +258,7 @@ rule drm_data:
     threads: 1
     run:
         shell("""
+            {src_command}
             echo '''inputSequence {{
     header
 }},
@@ -442,6 +451,7 @@ rule tnt:
         # so we need to cd to its dir and use the local path instead
 
         shell("""
+            {src_command}
             cd {params.dir_name}
 
             echo '''mxram 1024;
@@ -509,6 +519,7 @@ rule fasttree:
         fasttree = config['fasttree']
     run:
         shell("""
+            {src_command}
             {params.fasttree} -gamma -nt -gtr -cat 6 -intree {input.tree} < {input.aln} > {output}
         """)
 
@@ -531,6 +542,7 @@ rule phyml:
         aln = os.path.join(data_dir, '{n}', 'aln_sequences_{n}.phylip')
     run:
         shell("""
+            {src_command}
             cp {input.aln} {params.aln}
             {params.phyml} -i {params.aln} -d nt -m GTR -o tlr -f e -t e -c 6 -a e -s RAND -u {input.tree}
             mv {params.aln}_phyml_tree* {output.tree}
@@ -751,6 +763,7 @@ rule date:
         lsd = config['lsd']
     run:
         shell("""
+            {src_command}
             {params.lsd} -i {input.tree} -d {input.dates} -v 2 -c -s 882 -f 1000 -t 1e-3
             mv {input.tree}.result.date.newick {output.tree}
             mv {input.tree}.result {output.log}
@@ -799,7 +812,10 @@ rule pastml_tree:
         mem = 1000,
         name = 'copy_{n}'
     run:
-        shell("cp {input.tree} {output.tree}")
+        shell("""
+            {src_command}
+            cp {input.tree} {output.tree}
+        """)
 
 rule pastml_top_drms_loc:
     '''
@@ -824,6 +840,8 @@ rule pastml_top_drms_loc:
             columns=f.read().split(' ')
 
         shell("""
+            {src_command}
+            {py_config}
             source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {columns} {params.loc} --name_column {params.loc} -v \
@@ -852,6 +870,8 @@ rule pastml_top_drms:
             columns=f.read().split(' ')
 
         shell("""
+            {src_command}
+            {py_config}
             source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {columns} -v \
@@ -877,6 +897,8 @@ rule pastml_drm:
         drm = '{DRM}'
     run:
         shell("""
+            {src_command}
+            {py_config}
             source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {params.drm} -v \
@@ -903,6 +925,8 @@ rule pastml_drm_loc:
         loc = '{loc}'
     run:
         shell("""
+            {src_command}
+            {py_config}
             source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {params.drm} {params.loc} --verbose \
@@ -929,6 +953,8 @@ rule pastml_loc:
         date_col = 'Year'
     run:
         shell("""
+            {src_command}
+            {py_config}
             source activate cytopast
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {params.loc} -v \
