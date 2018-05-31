@@ -9,5 +9,12 @@ fasttree: fasttree
 phyml: phyml
 tnt: tnt
 mafft: mafft
-src: ". /etc/profile.d/pasteur_modules.sh"
-py_config: "module load gmp/6.0.0; module load conda/3.19.0; source /local/gensoft2/exe/conda/3.19.0/conda/bin/activate py3"
+
+lsd: "/pasteur/homes/azhukova/apps/lsd-0.3beta-master/src/lsd"
+tnt: "/pasteur/homes/azhukova/apps/tnt/tnt"
+fasttree: "module load FastTree/2.1.8; FastTree"
+phyml: "module load phyml/3.1; phyml"
+mafft: "module load mafft/7.397; mafft"
+
+src: '. /etc/profile.d/pasteur_modules.sh'
+py_config: 'source activate py3'
