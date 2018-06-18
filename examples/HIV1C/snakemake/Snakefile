@@ -4,7 +4,7 @@ import os
 # snakemake --keep-going --cores 4
 
 # To run on tars:
-# /local/gensoft2/exe/snakemake/3.5.4/bin/snakemake --configfile /pasteur/homes/azhukova/projects/PASTML/cytopast/examples/HIV1C/snakemake/config_tars.yaml --keep-going --resources tnt=1 --cores 1 -p --cluster "sbatch -c {threads} -o {params.name}.log -e {params.name}.log --mem {params.mem} -p bioevo --qos=bioevo -J {params.name}" --jobs 500
+# /local/gensoft2/exe/snakemake/3.5.4/bin/snakemake --configfile /pasteur/homes/azhukova/projects/PASTML/cytopast/examples/HIV1C/snakemake/config_tars.yaml --keep-going --resources tnt=1 -p --cluster "sbatch -c {threads} -o {params.name}.log -e {params.name}.log --mem {params.mem} -p bioevo --qos=bioevo -A bioevo -J {params.name}" --jobs 500
 
 configfile: "config.yaml"
 localrules: all, tnt
@@ -29,15 +29,15 @@ maps_dir = 'nondated_maps'
 n=5
 m=3
 DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N']
-tree_type = 'phyml'
+tree_types = ['raxml', 'phyml', 'fast']
 
 rule all:
     input:
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html'), n=range(n), type=tree_type, model='F81', loc='Location'),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'), n=range(n), type=tree_type, model='F81', loc='Location', m=m),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'), n=range(n), type=tree_type, model='F81', DRM=DRMS),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type=tree_type, model='F81', DRM=DRMS, loc='Location'),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html'), n=range(n), type=tree_type, model='F81', m=m, loc='Location'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html'), n=range(n), type=tree_types, model='F81', loc='Location'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'), n=range(n), type=tree_types, model='F81', loc='Location', m=m),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'), n=range(n), type=tree_types, model='F81', DRM=DRMS),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type=tree_types, model='F81', DRM=DRMS, loc='Location'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html'), n=range(n), type=tree_types, model='F81', m=m, loc='Location'),
 
 rule la_metadata:
     """Keep only C sequences and update the ids"""
@@ -314,6 +314,7 @@ rule fasttree:
             {params.fasttree} -gamma -nt -gtr -cat 6 -intree {input.tree} < {input.aln} > {output}
         """)
 
+
 rule phyml:
     '''
     Given a group of tips that are close together reconstructs the subtrees for them.
@@ -325,7 +326,7 @@ rule phyml:
         tree = os.path.join(data_dir, '{n}', 'phyml_tree.nwk'),
         log = temp(os.path.join(data_dir, '{n}', 'phyml_tree.log'))
     threads:
-        1
+        12
     params:
         mem = 4000,
         name = 'ph_{n}',
@@ -339,6 +340,34 @@ rule phyml:
             mv {params.aln}_phyml_tree* {output.tree}
             mv {params.aln}_phyml_stats* {output.log}
             rm {params.aln}
+        """)
+
+
+rule raxml:
+    '''
+    Given a group of tips that are close together reconstructs the subtrees for them.
+    '''
+    input:
+        aln = os.path.join(data_dir, 'alignment.nodrm.phylip'),
+        tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
+    output:
+        tree = os.path.join(data_dir, '{n}', 'raxml_tree.nwk'),
+        log = os.path.join(data_dir, '{n}', 'raxml.log'),
+    threads:
+        12
+    params:
+        mem = 8000,
+        name = 'rx_{n}',
+        raxml = config['raxml'],
+        dir = os.path.join(data_dir, '{n}'),
+        n = '{n}'
+    run:
+        shell("""
+            {src_command}
+            cd {params.dir}
+            {params.raxml} -f e  -t  {input.tree} -m GTRGAMMA -s {input.aln} -c 6 -n "RAXML_{params.n}" -T {threads} -b 239 -N 1000
+            mv "{params.dir}/RAxML_result.RAXML_{params.n}" {output.tree}
+            mv "{params.dir}/RAxML_log.RAXML_{params.n}" {output.log}
         """)
 
 rule extract_dates:
@@ -490,12 +519,15 @@ rule pastml_tree:
         1
     params:
         mem = 1000,
-        name = 'copy_{n}'
+        name = 'name_{n}'
     run:
         shell("""
             {src_command}
-            cp {input.tree} {output.tree}
+            {py_config}
+
+            python3 {folder}/py/name_tree.py --input_tree {input.tree} --output_tree {output.tree}
         """)
+
 
 rule pastml_top_drms_loc:
     '''

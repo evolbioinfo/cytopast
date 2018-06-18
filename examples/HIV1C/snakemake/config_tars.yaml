@@ -4,16 +4,11 @@ fasta_la: 'HIV1_ALL_2017_pol_DNA.fasta'
 fasta_phylotype: 'HIV-1C.fasta'
 data_phylotype: 'HIV-1C.tab'
 
-lsd: lsd
-fasttree: fasttree
-phyml: phyml
-tnt: tnt
-mafft: mafft
-
 lsd: "/pasteur/homes/azhukova/apps/lsd-0.3beta-master/src/lsd"
 tnt: "/pasteur/homes/azhukova/apps/tnt/tnt"
 fasttree: "module load FastTree/2.1.8; FastTree"
 phyml: "module load phyml/3.1; phyml"
+raxml: "module load RAxML/8.2.8; raxmlHPC-PTHREADS"
 mafft: "module load mafft/7.397; mafft"
 
 src: '. /etc/profile.d/pasteur_modules.sh'

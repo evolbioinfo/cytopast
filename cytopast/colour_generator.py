@@ -31,3 +31,4 @@ def get_enough_colours(num_unique_values):
     return ['#%02x%02x%02x' % tuple(rgb) for rgb in
             (map(lambda x: int(x * 255), colorsys.hsv_to_rgb(*hsv))
              for hsv in ((_ / num_unique_values, 0.5, 0.5) for _ in range(1, num_unique_values + 1)))]
+

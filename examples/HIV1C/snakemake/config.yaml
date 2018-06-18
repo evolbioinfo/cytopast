@@ -6,8 +6,9 @@ data_phylotype: 'HIV-1C.tab'
 
 lsd: lsd
 fasttree: fasttree
+raxml: raxmlHPC-PTHREADS
 phyml: phyml
 tnt: tnt
 mafft: mafft
-src_command:
+src: echo ""
 py_config: "source activate cytopast"

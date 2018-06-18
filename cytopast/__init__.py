@@ -55,7 +55,7 @@ def date_tips(tree, date_df):
             return None
 
     id2tip = {n.name: n for n in tree}
-    date_df = date_df[date_df.index.isin(id2tip) & ~pd.isna(date_df)]
+    date_df = date_df[date_df.index.isin(id2tip) & ~pd.isnull(date_df)]
     dated_fraction = len(date_df) / len(id2tip)
     if dated_fraction < .5:
         raise ValueError('Too few dates are provided (only for {}% of tips)!'.format('%g' % (100 * dated_fraction)))
