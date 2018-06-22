@@ -29,7 +29,8 @@ maps_dir = 'nondated_maps'
 n=5
 m=3
 DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N']
-tree_types = ['raxml', 'phyml', 'fast']
+#tree_types = ['raxml', 'phyml', 'fast']
+tree_types = ['fast']
 
 rule all:
     input:
