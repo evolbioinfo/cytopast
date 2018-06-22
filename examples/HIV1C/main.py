@@ -23,8 +23,7 @@ if '__main__' == __name__:
     df = pd.read_table(STATES_INPUT, header=0, index_col=0)
     df.index = df.index.map(str)
     date_column = 'Year'
-    # exit()
-    #
+
     country2loc = {'China': 'Asia', 'South Korea': 'Asia',
                    'Myanmar': 'Asia', 'Philippines': 'Asia', 'Thailand': 'Asia',
                    'India': 'Indian subcontinent', 'Nepal': 'Indian subcontinent', 'Pakistan': 'Indian subcontinent',
@@ -70,10 +69,12 @@ if '__main__' == __name__:
                 if Country.get_iso3_country_code_fuzzy(c)[0]}
 
 
-    def get_location(_):
+    def get_location(_, sa=False):
         if pd.isna(_):
             return None
         loc = iso32loc[_]
+        if not sa:
+            return loc
         if 'Indian' in loc:
             return 'Asia'
         if 'Europe' in loc or 'Asia' in loc:
@@ -81,33 +82,33 @@ if '__main__' == __name__:
         return Country.get_country_info_from_iso3(_)['Country or Area']
 
 
-    df['Loc_SA'] = df['Country ISO3'].map(get_location)
+    df['Loc_SA'] = df['Country ISO3'].map(lambda _: get_location(_, True))
+    df['Loc'] = df['Country ISO3'].map(get_location)
     df.to_csv(STATES_INPUT_LOC, sep='\t')
+
+    generate_map(data=STATES_INPUT_LOC, country='Country', location='Loc', tree=TREE_NWK,
+                 html=os.path.join(DATA_DIR, 'maps', 'geo_map.html'))
 
     model = F81
     prediction_method = MARGINAL_APPROXIMATION
+    pastml_pipeline(data=STATES_INPUT_LOC, tree=TREE_NWK,
+                    html_compressed=os.path.join(DATA_DIR, 'maps', 'map_Loc.html'),
+                    model=model, verbose=False, columns=['Loc'],
+                    prediction_method=prediction_method, work_dir=os.path.join(DATA_DIR, 'pastml'), date_column='Year')
 
-    # pastml_pipeline(data=STATES_INPUT_LOC, tree=TREE_NWK,
-    #                 html_compressed=os.path.join(DATA_DIR, 'maps', 'map_Loc.html'),
-    #                 model=model, verbose=False, columns=['Loc'],
-    #                 prediction_method=prediction_method, work_dir=os.path.join(DATA_DIR, 'pastml'), date_column='Year')
+    mutation = 'RT:M184V'
 
-    # mutations = ['RT:M184V', 'PR:L90M']
-    #
-    #
-    # for mutation in mutations:
-    #     pastml_pipeline(data=STATES_INPUT_LOC, tree=TREE_NWK,
-    #                     html_compressed=os.path.join(DATA_DIR, 'maps', 'map_{}.html'.format(mutation)),
-    #                     model=model, verbose=False, columns=[mutation], prediction_method=prediction_method,
-    #                     work_dir=os.path.join(DATA_DIR, 'pastml'), date_column='Year')
-    #
-    #     pastml_pipeline(data=STATES_INPUT_LOC, tree=TREE_NWK,
-    #                     html_compressed=os.path.join(DATA_DIR, 'maps',
-    #                                                  'map_Loc_{}.html'.format(mutation)),
-    #                     model=model, verbose=False, columns=[mutation, 'Loc'],
-    #                     prediction_method=prediction_method,
-    #                     name_column='Loc',
-    #                     work_dir=os.path.join(DATA_DIR, 'pastml'), date_column='Year')
+    pastml_pipeline(data=STATES_INPUT_LOC, tree=TREE_NWK,
+                    html_compressed=os.path.join(DATA_DIR, 'maps', mutation, 'map_{}.html'.format(mutation)),
+                    model=model, verbose=False, columns=[mutation], prediction_method=prediction_method,
+                    work_dir=os.path.join(DATA_DIR, 'pastml'), date_column='Year')
+
+    pastml_pipeline(data=STATES_INPUT_LOC, tree=TREE_NWK,
+                    html_compressed=os.path.join(DATA_DIR, 'maps', 'map_Loc_{}.html'.format(mutation)),
+                    model=model, verbose=False, columns=[mutation, 'Loc'],
+                    prediction_method=prediction_method,
+                    name_column='Loc',
+                    work_dir=os.path.join(DATA_DIR, 'pastml'), date_column='Year')
 
     tree = Tree(TREE_NWK, format=3)
     for _ in tree.traverse():
@@ -115,31 +116,31 @@ if '__main__' == __name__:
             _.write(outfile=SA_SUBTREE_NWK, format=3)
 
     generate_map(data=STATES_INPUT_LOC, country='Country', location='Loc_SA', tree=SA_SUBTREE_NWK,
-                 html=os.path.join(DATA_DIR, 'geo_map_SA.html'))
+                 html=os.path.join(DATA_DIR, 'maps', 'geo_map_SA.html'))
 
     pastml_pipeline(data=STATES_INPUT_LOC, tree=SA_SUBTREE_NWK,
                     html_compressed=os.path.join(DATA_DIR, 'maps',
-                                                 'map_Loc_{}_SA_ext.html'.format('RT:M184V')),
-                    model=model, verbose=False, columns=['RT:M184V', 'Loc_SA'],
+                                                 'map_Loc_{}_SA.html'.format(mutation)),
+                    model=model, verbose=False, columns=[mutation, 'Loc_SA'],
                     prediction_method=prediction_method,
                     name_column='Loc_SA',
                     work_dir=os.path.join(DATA_DIR, 'pastml'), date_column='Year',
                     column2parameters={'RT:M184V': {'scaling factor': 4.27143674, 'epsilon': 3e-03,
                                                     "sensitive": 0.93371409, "resistant": 0.06628591},
-                                       'Loc_SA': {'scaling factor': 6.49557354, 'epsilon': 3e-03,
-                                                  "Ethiopia": 0.03704372,
-                                                  "Djibouti": 0.00645968, " Brazil": 0.01283314, " Europe": 0.50565032,
-                                                  " Uganda": 0.05331524, " Senegal": 0.03236439,
-                                                  " Democratic Republic of the Congo": 0.02581537,
-                                                  " Burundi": 0.08141071, " Sudan": 0.02602897, " Eritrea": 0.00651429,
-                                                  " Uruguay": 0.00646014, " Argentina": 0.03883105,
-                                                  " Yemen": 0.01936169, " Kenya": 0.01290804, " Cuba": 0.01980251,
-                                                  " Asia": 0.01290804, " South Africa": 0.00651588,
-                                                  " United Republic of Tanzania": 0.05053965,
-                                                  " United States of America": 0.01936169, " Zambia": 0.02587549}},
+                                       # 'Loc_SA': {'scaling factor': 6.49557354, 'epsilon': 3e-03,
+                                       #            "Ethiopia": 0.03704372,
+                                       #            "Djibouti": 0.00645968, " Brazil": 0.01283314, " Europe": 0.50565032,
+                                       #            " Uganda": 0.05331524, " Senegal": 0.03236439,
+                                       #            " Democratic Republic of the Congo": 0.02581537,
+                                       #            " Burundi": 0.08141071, " Sudan": 0.02602897, " Eritrea": 0.00651429,
+                                       #            " Uruguay": 0.00646014, " Argentina": 0.03883105,
+                                       #            " Yemen": 0.01936169, " Kenya": 0.01290804, " Cuba": 0.01980251,
+                                       #            " Asia": 0.01290804, " South Africa": 0.00651588,
+                                       #            " United Republic of Tanzania": 0.05053965,
+                                       #            " United States of America": 0.01936169, " Zambia": 0.02587549}
+                                       },
                     tip_size_threshold=10
                     )
-    exit()
 
     for year in (2011, 2006, 2001, 1996, 1991, 1986):
         tree = remove_certain_leaves(tree, to_remove=lambda node: pd.isnull(df.loc[node.name, date_column])
@@ -148,8 +149,8 @@ if '__main__' == __name__:
         tree.write(outfile=nwk, format=3)
 
         pastml_pipeline(data=STATES_INPUT_LOC, tree=nwk,
-                        html_compressed=os.path.join(DATA_DIR, 'maps',
-                                                     'map_{}_{}.html'.format('RT:M184V', year)),
-                        model=model, verbose=False, columns=['RT:M184V'],
+                        html_compressed=os.path.join(DATA_DIR, 'maps', mutation,
+                                                     'map_{}_{}.html'.format(mutation, year)),
+                        model=model, verbose=False, columns=[mutation],
                         prediction_method=prediction_method,
                         work_dir=os.path.join(DATA_DIR, 'pastml'), date_column='Year')

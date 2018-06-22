@@ -16,13 +16,13 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    version='0.7.3',
+    version='0.8',
     description='Visualisation of PASTML trees.',
     author='Anna Zhukova',
     author_email='anna.zhukova@pasteur.fr',
     url='https://github.com/evolbioinfo/cytopast',
     keywords=['PASTML', 'visualisation', 'phylogeny'],
-    install_requires=['ete3', 'pandas', 'numpy', 'jinja2', 'pastml>=0.7.3'],
+    install_requires=['ete3', 'pandas', 'numpy', 'jinja2', 'pastml>=0.8', 'hdx-python-country'],
     entry_points={
             'console_scripts': [
                 'cytopast = cytopast.pastml_analyser:main',
