@@ -15,7 +15,7 @@ REASONABLE_NUMBER_OF_TIPS = 15
 CATEGORIES = 'categories'
 
 NODE_SIZE = 'node_size'
-MAX_NUM_TIPS_INSIDE = 'max_size'
+NUM_TIPS_INSIDE = 'max_size'
 NODE_NAME = 'node_name'
 
 TIPS_INSIDE = 'in_tips'
@@ -87,7 +87,7 @@ def date_tips(tree, date_df):
                 id2tip[id].add_feature(DATE,
                                        min(min_date, max(max_date,
                                                          int(_get_date(date1) + rate * (
-                                                                     get_dist_to_root(id2tip[id]) - dist1)))))
+                                                                 get_dist_to_root(id2tip[id]) - dist1)))))
 
     return min(_.date for _ in id2tip.values()), max(_.date for _ in id2tip.values())
 
@@ -237,75 +237,67 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, tip_size_threshol
     remove_mediators(tree, lambda _: get_states(_, categories))
 
     for n in tree.traverse():
-        n.add_feature(MAX_NUM_TIPS_INSIDE, sum_len_values(getattr(n, TIPS_INSIDE)))
+        n.add_feature(NUM_TIPS_INSIDE, sum_len_values(getattr(n, TIPS_INSIDE)))
         n.add_feature(TIPS_INSIDE, [getattr(n, TIPS_INSIDE)])
         n.add_feature(TIPS_BELOW, [getattr(n, TIPS_BELOW)])
 
-    tip_sizes = set(getattr(_, MAX_NUM_TIPS_INSIDE) for _ in tree)
-    merge_different_sizes = len(tip_sizes) > 10 and can_merge_diff_sizes
-    if merge_different_sizes:
-        tips2bin = lambda _: int(np.log10(max(1, _)))
-    else:
-        tips2bin = lambda _: _
+    logging.info('Gonna collapse horizontally')
+    get_bin = lambda _: _
+    # collapse_horizontally(get_bin, tree, lambda _: get_states(_, categories))
+    collapse_hor(tree, lambda _: get_states(_, categories), get_bin)
 
-    logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
-                 .format('' if merge_different_sizes else 'not '))
-    collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
-
-    if not merge_different_sizes and can_merge_diff_sizes and len(tree) > REASONABLE_NUMBER_OF_TIPS:
-        merge_different_sizes = True
-        tips2bin = lambda _: int(np.log10(max(1, _)))
+    if can_merge_diff_sizes and len(tree) > tip_size_threshold:
+        get_bin = lambda _: int(np.log10(max(1, _)))
 
         logging.info('Gonna re-collapse horizontally, merging nodes of different sizes')
-        collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
+        # collapse_horizontally(get_bin, tree, lambda _: get_states(_, categories))
+        collapse_hor(tree, lambda _: get_states(_, categories), get_bin)
 
-    tip_sizes = [getattr(_, MAX_NUM_TIPS_INSIDE, 0) * len(getattr(_, TIPS_INSIDE)) for _ in tree]
-    if len(tip_sizes) > tip_size_threshold:
-        threshold = sorted(tip_sizes)[-tip_size_threshold]
-        logging.info('Removing tips of size {} or less'.format(threshold))
-        remove_small_tips(tree, to_be_removed=lambda _: getattr(_, MAX_NUM_TIPS_INSIDE, 0)
-                                                        * len(getattr(_, TIPS_INSIDE)) <= threshold)
-        remove_mediators(tree, lambda _: get_states(_, categories))
+    if len(tree) > tip_size_threshold:
+        for n in tree.traverse():
+            n.add_feature(NUM_TIPS_INSIDE, sum(sum_len_values(_) for _ in getattr(n, TIPS_INSIDE))
+                          / len(getattr(n, TIPS_INSIDE)))
 
-        logging.info('Gonna collapse horizontally, {}merging nodes of different sizes'
-                     .format('' if merge_different_sizes else 'not '))
-        collapse_horizontally(tips2bin, tree, lambda _: get_states(_, categories))
+        def get_tsize(n):
+            res = getattr(n, NUM_TIPS_INSIDE) * len(getattr(n, TIPS_INSIDE))
+            while n.up:
+                n = n.up
+                res *= len(getattr(n, TIPS_INSIDE))
+            return res
+
+        tip_sizes = [get_tsize(_) for _ in tree]
+        if len(tip_sizes) > tip_size_threshold:
+            threshold = sorted(tip_sizes)[-tip_size_threshold]
+            logging.info('Removing tips of size {} or less'.format(threshold))
+            remove_small_tips(tree, to_be_removed=lambda _: get_tsize(_) <= threshold)
+            remove_mediators(tree, lambda _: get_states(_, categories))
+
+            logging.info('Gonna collapse horizontally one last time')
+            # collapse_horizontally(get_bin, tree, lambda _: get_states(_, categories))
+            collapse_hor(tree, lambda _: get_states(_, categories), get_bin)
     return tree
 
 
-def collapse_horizontally(tips2bin, tree, get_states):
-    parents = [tree]
-    while parents:
-        _collapse_horizontally(get_states, parents=parents, tips2bin=tips2bin)
-        parents = reduce(lambda l1, l2: l1 + l2, (p.children for p in parents))
-
-
-def _collapse_horizontally(get_states, parents, tips2bin=lambda _: _):
-    def get_sorted_states(n, add_edge_size=True):
-        return tuple(sorted('{}:{}'.format(k, v) for (k, v) in get_states(n).items())), \
-               tips2bin(getattr(n, MAX_NUM_TIPS_INSIDE)), \
-               (len(getattr(n, TIPS_INSIDE)) if add_edge_size else -1)
+def collapse_hor(tree, get_states, tips2bin):
+    config_cache = {}
 
     def get_configuration(n):
-        queue = Queue()
-        queue.put((0, n), block=False)
-        config = [(0, get_sorted_states(n, False))]
-        while not queue.empty():
-            level, n = queue.get(block=False)
-            for (child, states) in sorted(((_, get_sorted_states(_)) for _ in n.children), key=lambda _: _[1]):
-                config.append((level + 1, states))
-                queue.put((level + 1, child))
-        return tuple(config)
+        if n not in config_cache:
+            config_cache[n] = (len(getattr(n, TIPS_INSIDE)),
+                               (tips2bin(getattr(n, NUM_TIPS_INSIDE)),
+                                tuple(sorted('{}:{}'.format(k, v) for (k, v) in get_states(n).items())),
+                                tuple(sorted([get_configuration(_) for _ in n.children]))))
+        return config_cache[n]
 
-    for p in parents:
-        state2children = defaultdict(list)
-        for c in p.children:
-            state2children[get_configuration(c)].append(c)
-        for children in (_ for _ in state2children.values() if len(_) > 1):
+    for n in tree.traverse('postorder'):
+        config2children = defaultdict(list)
+        for _ in n.children:
+            config2children[get_configuration(_)[1]].append(_)
+        for children in (_ for _ in config2children.values() if len(_) > 1):
             children = sorted(children, key=lambda _: getattr(_, DATE, 0))
             child = children[0]
             for c in children[1:]:
-                p.remove_child(c)
+                n.remove_child(c)
             child.add_feature(METACHILD, True)
 
             tips_inside, tips_below = [], []
@@ -315,8 +307,11 @@ def _collapse_horizontally(get_states, parents, tips2bin=lambda _: _):
 
             child.add_feature(TIPS_INSIDE, tips_inside)
             child.add_feature(TIPS_BELOW, tips_below)
-
+            child.add_feature(NUM_TIPS_INSIDE, sum(sum_len_values(_) for _ in getattr(child, TIPS_INSIDE))
+                              / len(getattr(child, TIPS_INSIDE)))
             child.add_feature(DATE, min(getattr(_, DATE) for _ in children))
+            if child in config_cache:
+                config_cache[child] = (len(getattr(child, TIPS_INSIDE)), config_cache[child][1])
 
 
 def remove_small_tips(tree, to_be_removed):
@@ -324,8 +319,14 @@ def remove_small_tips(tree, to_be_removed):
     while changed:
         changed = False
         for l in tree.get_leaves():
-            if l.up and to_be_removed(l):
-                l.up.remove_child(l)
+            parent = l.up
+            if parent and to_be_removed(l):
+                parent.remove_child(l)
+                parent.add_feature(DATE,
+                                   min(min(_.keys()) if _ else 200000 for _ in getattr(parent, TIPS_INSIDE))
+                                   if getattr(parent, TIPS_INSIDE) else 200000)
+                if parent.children:
+                    parent.add_feature(DATE, min(getattr(parent, DATE), min(getattr(_, DATE) for _ in parent.children)))
                 changed = True
 
 
@@ -354,8 +355,9 @@ def collapse_vertically(tree, get_states):
                     getattr(n, TIPS_INSIDE)[date].extend(tip_names)
 
                 n.remove_child(child)
-                for grand_child in child.children:
-                    n.add_child(grand_child)
+                grandchildren = list(child.children)
+                for grandchild in grandchildren:
+                    n.add_child(grandchild)
 
 
 def remove_mediators(tree, get_states):
@@ -366,14 +368,10 @@ def remove_mediators(tree, get_states):
     :return: void, modifies the input tree
     """
     for n in tree.traverse('postorder'):
-        if getattr(n, METACHILD, False):
+        if getattr(n, METACHILD, False) or n.is_leaf() or len(n.children) > 1 or not n.up:
             continue
         states = get_states(n)
-        if n.is_leaf() or len(n.children) > 1:
-            continue
         parent = n.up
-        if not parent:
-            continue
         parent_states = get_states(parent)
         child = n.children[0]
         child_states = get_states(child)
@@ -394,5 +392,4 @@ def remove_mediators(tree, get_states):
                 tips_inside[date].extend(tip_names)
 
             parent.remove_child(n)
-            for c in n.children:
-                parent.add_child(c)
+            parent.add_child(child)

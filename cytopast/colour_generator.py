@@ -14,7 +14,9 @@ NUM2COLOURS = {
     11: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a',
          '#ffff99'],
     12: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a',
-         '#ffff99', '#b15928']
+         '#ffff99', '#b15928'],
+    13: ['#cc9566', '#ccc466', '#a4cc66', '#75cc66', '#66cc85', '#66ccb4', '#66b4cc',
+         '#6685cc', '#7566cc', '#a466cc', '#cc66c4', '#cc6695', '#cc6666']
 }
 
 WHITE = '#ffffff'
@@ -30,5 +32,9 @@ def get_enough_colours(num_unique_values):
         return NUM2COLOURS[num_unique_values]
     return ['#%02x%02x%02x' % tuple(rgb) for rgb in
             (map(lambda x: int(x * 255), colorsys.hsv_to_rgb(*hsv))
-             for hsv in ((_ / num_unique_values, 0.5, 0.5) for _ in range(1, num_unique_values + 1)))]
+             for hsv in ((_ / num_unique_values, 0.5, .8) for _ in range(1, num_unique_values + 1)))]
 
+
+def hex_to_rgb(value):
+    value = value.lstrip('#')
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))

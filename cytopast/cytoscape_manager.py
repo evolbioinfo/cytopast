@@ -4,7 +4,7 @@ import numpy as np
 
 from jinja2 import Environment, PackageLoader
 
-from cytopast import METACHILD, MAX_NUM_TIPS_INSIDE, get_states, DATE, NODE_SIZE, FONT_SIZE, EDGE_NAME, NODE_NAME, \
+from cytopast import METACHILD, NUM_TIPS_INSIDE, get_states, DATE, NODE_SIZE, FONT_SIZE, EDGE_NAME, NODE_NAME, \
     EDGE_SIZE, TIPS_INSIDE, TIPS_BELOW, sum_len_values
 
 TOOLTIP = 'tooltip'
@@ -58,8 +58,8 @@ def get_node(n, n_id, tooltip='', clazz=None):
                 or feature.startswith('node_')}
     features[ID] = n_id
     if SHAPE not in n.features:
-        features[SHAPE] = TIP_SHAPE if n.is_leaf() and getattr(n, MAX_NUM_TIPS_INSIDE, 1) == 1 \
-            else INNER_NODE_SHAPE if getattr(n, MAX_NUM_TIPS_INSIDE, 0) == 0 else MERGED_NODE_SHAPE
+        features[SHAPE] = TIP_SHAPE if n.is_leaf() and getattr(n, NUM_TIPS_INSIDE, 1) == 1 \
+            else INNER_NODE_SHAPE if getattr(n, NUM_TIPS_INSIDE, 0) == 0 else MERGED_NODE_SHAPE
     features[TOOLTIP] = tooltip
     return _get_node(features, clazz=_clazz_list2css_class(clazz))
 
@@ -205,7 +205,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, node2tooltip, min
 
 
 def get_size_transformations(tree):
-    n_sizes = [getattr(n, MAX_NUM_TIPS_INSIDE) for n in tree.traverse() if getattr(n, MAX_NUM_TIPS_INSIDE, False)]
+    n_sizes = [getattr(n, NUM_TIPS_INSIDE) for n in tree.traverse() if getattr(n, NUM_TIPS_INSIDE, False)]
     max_size = max(n_sizes) if n_sizes else 1
     min_size = min(n_sizes) if n_sizes else 1
     need_log = max_size / min_size > 100
