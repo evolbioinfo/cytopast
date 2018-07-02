@@ -21,6 +21,7 @@ data_phy = os.path.join(data_dir, config['data_phylotype'])
 data_la = os.path.join(data_dir, 'data_la.tab')
 data = os.path.join(data_dir, 'data.tab')
 metadata = os.path.join(data_dir, 'metadata.tab')
+metadata = os.path.join(data_dir, 'metadata_loc.tab')
 fasta_phy_ids = os.path.join(data_dir, 'aln.phy.c.outgroup.fa')
 fa = os.path.join(data_dir, 'aln.fa')
 aln = os.path.join(data_dir, 'alignment.fa')
@@ -30,14 +31,22 @@ n=5
 m=3
 DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N']
 tree_types = ['raxml', 'phyml', 'fast']
+location_col = 'Loc'
 
 rule all:
     input:
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html'), n=range(n), type=tree_types, model='F81', loc='Location'),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'), n=range(n), type=tree_types, model='F81', loc='Location', m=m),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'), n=range(n), type=tree_types, model='F81', DRM=DRMS),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type=tree_types, model='F81', DRM=DRMS, loc='Location'),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html'), n=range(n), type=tree_types, model='F81', m=m, loc='Location'),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html'),
+                            n=range(n), type=tree_types, model='F81', loc=location_col),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'),
+                            n=range(n), type=tree_types, model='F81', loc=location_col, m=m),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'),
+                            n=range(n), type=tree_types, model='F81', DRM=DRMS),
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}',
+                            'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type=tree_types, model='F81',
+                            DRM=DRMS, loc=location_col),
+        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}',
+                            'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html'), n=range(n), type=tree_types,
+                            model='F81', m=m, loc=location_col),
 
 rule la_metadata:
     """Keep only C sequences and update the ids"""
@@ -56,6 +65,25 @@ rule la_metadata:
             {py_config}
 
             python3 {folder}/py/la_metadata.py --output_data {output.data} --output_fa {output.fa} --input_fa {input.fa}
+        """)
+
+
+rule loc_metadata:
+    """Add Loc columns to metadata"""
+    input:
+        data = metadata
+    output:
+        data = metadata_loc
+    params:
+        mem = 2000,
+        name = 'loc_md'
+    threads: 1
+    run:
+        shell("""
+            {src_command}
+            {py_config}
+
+            python3 {folder}/py/map_location.py --output_data {output.data} --input_data {input.data}
         """)
 
 
@@ -627,7 +655,8 @@ rule pastml_drm_loc:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
         data = metadata,
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}', 'map_{n}_{type}_{model}_{DRM}_{loc}.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}',
+                           'map_{n}_{type}_{model}_{DRM}_{loc}.html')
     threads:
         4
     params:
