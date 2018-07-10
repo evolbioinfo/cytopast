@@ -93,6 +93,19 @@ var cy = cytoscape({
   }
 });
 
+function removeSubtree(node) {
+    var outEdges = cy.edges('edge[source="' + node.id() + '"]');
+    outEdges.targets().forEach(function(ele, i, eles) {
+        removeSubtree(ele);
+    });
+    cy.remove(node);
+}
+
+// remove nodes on right-click
+cy.on('cxttap', 'node', function(evt){
+  removeSubtree(evt.target);
+});
+
 cy.filter(function(ele, i, eles) {
     return ele.isNode() && ele.data('tooltip') !== undefined;
 } ).qtip({
