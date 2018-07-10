@@ -108,7 +108,7 @@ def set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, 
                   '{}{}'.format(state, tips_inside_str) if max_n_tips_below > 0 else state)
 
     n.add_feature('{}{}'.format(NODE_SIZE, suffix), 20 if max_n_tips == 0 else size_scaling(transform_size(max_n_tips)))
-    n.add_feature('{}{}'.format(FONT_SIZE, suffix), 10 if max_n_tips == 0 else font_scaling(transform_size(max_n_tips)))
+    n.add_feature('{}{}'.format(FONT_SIZE, suffix), 12 if max_n_tips == 0 else font_scaling(transform_size(max_n_tips)))
 
     # If it is a compressed tree, set horizontal size as label
     if max_n_tips > 0 or max_n_tips_below > 0:
@@ -219,7 +219,7 @@ def get_size_transformations(tree):
 
     size_scaling = get_scaling_function(y_m=30, y_M=30 * min(8, int(max_size / min_size)),
                                         x_m=transform_size(min_size), x_M=transform_size(max_size))
-    font_scaling = get_scaling_function(y_m=10, y_M=10 * min(3, int(max_size / min_size)),
+    font_scaling = get_scaling_function(y_m=12, y_M=12 * min(3, int(max_size / min_size)),
                                         x_m=transform_size(min_size), x_M=transform_size(max_size))
     e_size_scaling = get_scaling_function(y_m=10, y_M=10 * min(3, int(max_e_size / min_e_size)),
                                           x_m=transform_e_size(min_e_size), x_M=transform_e_size(max_e_size))
