@@ -12,4 +12,4 @@ raxml: "module load RAxML/8.2.8; raxmlHPC-PTHREADS"
 mafft: "module load mafft/7.397; mafft"
 
 src: '. /etc/profile.d/pasteur_modules.sh'
-py_config: 'source activate py3'
+py_config: 'module load conda/3.19.0; source /local/gensoft2/exe/conda/3.19.0/conda/bin/activate py3'
