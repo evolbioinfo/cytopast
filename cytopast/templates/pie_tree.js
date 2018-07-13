@@ -118,6 +118,20 @@ cy.filter(function(ele, i, eles) {
     }
 });
 
+function removeSubtree(node) {
+    var outEdges = cy.edges('edge[source="' + node.id() + '"]');
+    outEdges.targets().forEach(function(ele, i, eles) {
+        removeSubtree(ele);
+    });
+    cy.remove(node);
+}
+
+// remove nodes on right-click
+cy.on('cxttap', 'node', function(evt){
+  removeSubtree(evt.target);
+});
+
+
 function to_image(){
     document.getElementById("downloader").href = cy.jpg({ full: false, quality: 1.0, scale: 2}).replace(/^data:image\/[^;]/, 'data:application/octet-stream');
 }

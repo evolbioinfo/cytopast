@@ -13,6 +13,6 @@ if '__main__' == __name__:
 
     df = pd.read_table(params.input)
     top_mutations = sorted([col for col in df.columns if 'RT:' in col or 'PR:' in col],
-                           key=lambda drm: len(df[df[drm].isnull()]))[: params.n]
+                           key=lambda drm: -len(df[df[drm] == 'resistant']))[: params.n]
     with open(params.output, 'w+') as f:
         f.write(' '.join("'{}'".format(drm) for drm in top_mutations))
