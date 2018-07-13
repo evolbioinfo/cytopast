@@ -21,7 +21,7 @@ data_phy = os.path.join(data_dir, config['data_phylotype'])
 data_la = os.path.join(data_dir, 'data_la.tab')
 data = os.path.join(data_dir, 'data.tab')
 metadata = os.path.join(data_dir, 'metadata.tab')
-metadata = os.path.join(data_dir, 'metadata_loc.tab')
+metadata_loc = os.path.join(data_dir, 'metadata_loc.tab')
 fasta_phy_ids = os.path.join(data_dir, 'aln.phy.c.outgroup.fa')
 fa = os.path.join(data_dir, 'aln.fa')
 aln = os.path.join(data_dir, 'alignment.fa')
@@ -35,18 +35,19 @@ location_col = 'Loc'
 
 rule all:
     input:
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html'),
-                            n=range(n), type=tree_types, model='F81', loc=location_col),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'),
-                            n=range(n), type=tree_types, model='F81', loc=location_col, m=m),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'),
-                            n=range(n), type=tree_types, model='F81', DRM=DRMS),
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}',
-                            'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type=tree_types, model='F81',
-                            DRM=DRMS, loc=location_col),
-        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}',
-                            'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html'), n=range(n), type=tree_types,
-                            model='F81', m=m, loc=location_col),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html'),
+#                            n=range(n), type=tree_types, model='F81', loc=location_col),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'),
+#                            n=range(n), type=tree_types, model='F81', loc=location_col, m=m),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'),
+#                            n=range(n), type=tree_types, model='F81', DRM=DRMS),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}',
+#                            'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type=tree_types, model='F81',
+#                            DRM=DRMS, loc=location_col),
+#        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}',
+#                            'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html'), n=range(n), type=tree_types,
+#                            model='F81', m=m, loc=location_col),
+        os.path.join(data_dir, 'distances_phyml.tab')
 
 rule la_metadata:
     """Keep only C sequences and update the ids"""
@@ -700,4 +701,25 @@ rule pastml_loc:
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {params.loc} -v \
             --date_column {params.date_col}
+        """)
+
+
+rule compare_trees:
+    '''
+    Calculates RF distances between the trees.
+    '''
+    input:
+        trees = expand(os.path.join(data_dir, '{n}', 'pastml_{{type}}_tree.nwk'), n=n)
+    output:
+        log = os.path.join(data_dir, 'distances_{type}.tab')
+    threads:
+        1
+    params:
+        mem = 1000,
+        name = 'RF'
+    run:
+        shell("""
+            {src_command}
+            {py_config}
+            python3 {folder}/py/compare_trees.py --trees {input.trees} --output {output.log}
         """)
