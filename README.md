@@ -7,12 +7,113 @@ or apply [PASTML](https://github.com/saishikawa/PASTML) to infer ancestral state
 
 The states are visualised as different colours of the tree nodes using [Cytoscape.js](http://js.cytoscape.org/)
 
-## Installation
+# Input data
+As an input, one needs to provide a **rooted** phylogenetical tree in [newick](https://en.wikipedia.org/wiki/Newick_format) format,
+and a table containing tip states, 
+in tab-delimited (by default) or csv format (to be specified with *--data_sep ,* option).
+
+### Example
+Let's assume that the tree and annotation files are in the Downloads folder, 
+and are named respectively tree.nwk and states.csv.
+
+The states.csv is a comma-separated file, containing tip ids in the first column, 
+and several named columns, including *Location*, i.e.:
+
+
+Tip_id | ... | Location | ...
+----- |  ----- | ----- | -----
+1 | ... | Africa | ...
+2 | ... | Asia | ...
+3 | ... | Africa | ...
+... | ... | ... | ...
+
+
+# Try it online
+Try it at [pastml.pasteur.fr](https://pastml.pasteur.fr)
+
+# Run it on your computer
+
+There are 2 alternative ways to run cytopast on your computer: with [docker](https://hub.docker.com/), or in python3.
+
+## Run with docker
+
+### Basic usage
+```bash
+docker run -v <path_to_the_folder_containing_the_tree_and_the_annotations>:/data:rw -t evolbioinfo/pastml --tree /data/<tree_file> --data /data/<annotation_file> --columns <one_or_more_column_names> --html_compressed /data/<map_name>
+```
+
+For example, to reconstruct and visualise the ancestral Location states, 
+one needs to run the following command:
+
+```bash
+docker run -v ~/Downloads:/data:rw -t evolbioinfo/pastml --tree /data/tree.nwk --data /data/states.csv --data_sep , --columns Location --html_compressed /data/location_map.html
+```
+
+This will produce a file location_map.html in the Downloads folder, 
+that can be viewed with a browser.
+
+
+### Help
+
+To see advanced options, run
+```bash
+docker run -t evolbioinfo/pastml -h
+```
+
+## Run in python3
+
+We strongly recommend installing cytopast for python via [conda](https://conda.io/docs/), following the procedure described below:
+
+### Installing with conda
+
+Once you have conda installed create an environment for cytopast with python3, gcc and gsl:
+
+```bash
+conda create --name cytopast python=3 gcc gsl
+```
+
+Then activate it:
+```bash
+source activate cytopast
+```
+
+Then install cytopast in it:
+
+```bash
+pip install cytopast
+```
+
+### Installing without conda
+
+Install [GNU GSL](https://www.gnu.org/software/gsl/), following the instructions provided on GSL website.
+
+Then install cytopast:
+
 ```bash
 pip3 install cytopast
 ```
 
-## Basic usage in python3
+### Basic usage in a command line
+If you installed cytopast via conda, do not forget to first activate the dedicated environment, e.g.
+
+```bash
+source activate cytopast
+```
+
+To run cytopast:
+
+```bash
+cytopast --tree <path/to/tree_file.nwk> --data <path/to/annotation_file.tab> --columns <one_or_more_column_names> --html_compressed <path/to/output/map.html>
+```
+
+### Help
+
+To see advanced options, run:
+```bash
+cytopast -h
+```
+
+### Basic usage in python3
 ```python
 from cytopast.pastml_analyser import pastml_pipeline
 
@@ -41,93 +142,4 @@ pastml_pipeline(data=data, data_sep=',', columns=columns, name_column='Location'
                 tree=tree,
                 html_compressed=html_compressed, html=html, 
                 verbose=True)
-```
-
-## Basic usage from console
-```bash
-cytopast --tree /path/to/the/tree.nwk --data /path/to/the/annotation/data.txt --data_sep , \
---html /path/to/the/output/visualisation/of/the/tree.html \
---html_compressed /path/to/the/output/visualisation/of/the/compressed/map.html \
---columns Location Resistant_or_not --name_column Location --verbose
-```
-
-## Basic usage with [docker](https://hub.docker.com/)
-```bash
-docker run -v /path/to/the/folder/containing/the_tree_and_annotations/:/data:rw -t evolbioinfo/pastml \
---tree /data/tree.nwk --data /data/data.txt --data_sep , \
---html /data/tree.html --html_compressed /data/map.html \
---columns Location Resistant_or_not --name_column Location --verbose
-```
-
-## Options
-
-```
-usage: cytopast [-h] -d DATA [-s DATA_SEP] [-i ID_INDEX]
-                          [-c [COLUMNS [COLUMNS ...]]]
-                          [--copy_columns [COPY_COLUMNS [COPY_COLUMNS ...]]]
-                          -t TREE [-m {JC,F81}]
-                          [--prediction_method {marginal_approx,marginal,max_posteriori,joint,downpass,acctran,deltran}]
-                          [--work_dir WORK_DIR] [-n NAME_COLUMN]
-                          [--tip_size_threshold TIP_SIZE_THRESHOLD]
-                          [-o OUT_DATA] [-p HTML_COMPRESSED] [-l HTML] [-v]
-
-Ancestral state reconstruction and visualisation of annotated phylogenetic trees (as html maps).
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -v, --verbose         print information on the progress of the analysis
-
-annotation-related arguments:
-  -d DATA, --data DATA  the annotation file in tab/csv format with the first
-                        row containing the column names.
-  -s DATA_SEP, --data_sep DATA_SEP
-                        the column separator for the data table. By default is
-                        set to tab, i.e. for tab file. Set it to ',' if your
-                        file is csv.
-  -i ID_INDEX, --id_index ID_INDEX
-                        the index of the column in the data table that
-                        contains the tree tip names, indices start from zero
-                        (by default is set to 0).
-  -c [COLUMNS [COLUMNS ...]], --columns [COLUMNS [COLUMNS ...]]
-                        names of the data table columns that contain states to
-                        be analysed with PASTML. If neither columns nor
-                        copy_columns are specified, then all columns will be
-                        considered for PASTMl analysis.
-  --copy_columns [COPY_COLUMNS [COPY_COLUMNS ...]]
-                        names of the data table columns that contain states to
-                        be copied as-is, without applying PASTML (the missing
-                        states will stay unresolved).
-
-tree-related arguments:
-  -t TREE, --tree TREE  the input tree in newick format.
-
-ancestral-state inference-related arguments:
-  -m {JC,F81}, --model {JC,F81}
-                        the evolutionary model to be used by PASTML, by
-                        default JC.
-  --prediction_method {marginal_approx,marginal,max_posteriori,joint,downpass,acctran,deltran}
-                        the ancestral state prediction method to be used by
-                        PASTML, by default marginal_approx.
-  --work_dir WORK_DIR   the working dir for PASTML to put intermediate files
-                        into (if not specified a temporary dir will be
-                        created).
-
-visualisation-related arguments:
-  -n NAME_COLUMN, --name_column NAME_COLUMN
-                        name of the data table column to be used for node
-                        names in the compressed map visualisation(must be one
-                        of those specified in columns or copy_columns if they
-                        are specified).If the data table contains only one
-                        column it will be used by default.
-  --tip_size_threshold TIP_SIZE_THRESHOLD
-                        Remove the tips of size less than the threshold-th
-                        from the compressed map (set to inf to keep all tips).
-
-output-related arguments:
-  -o OUT_DATA, --out_data OUT_DATA
-                        the output annotation file with the states inferred by
-                        PASTML.
-  -p HTML_COMPRESSED, --html_compressed HTML_COMPRESSED
-                        the output summary map visualisation file (html).
-  -l HTML, --html HTML  the output tree visualisation file (html).
 ```
