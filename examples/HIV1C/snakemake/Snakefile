@@ -3,9 +3,6 @@ import os
 # To run locally:
 # snakemake --keep-going --cores 4
 
-# To run on tars:
-# /local/gensoft2/exe/snakemake/3.5.4/bin/snakemake --configfile /pasteur/homes/azhukova/projects/PASTML/cytopast/examples/HIV1C/snakemake/config_tars.yaml --keep-going --resources tnt=1 -p --cluster "sbatch -c {threads} -o {params.name}.log -e {params.name}.log --mem {params.mem} -p bioevo --qos=bioevo -A bioevo -J {params.name}" --jobs 500
-
 configfile: "config.yaml"
 localrules: all, tnt
 ruleorder: pastml_drm_loc_subtree > pastml_drm_loc > pastml_drm
@@ -27,17 +24,26 @@ fasta_phy_ids = os.path.join(data_dir, 'aln.phy.c.outgroup.fa')
 fa = os.path.join(data_dir, 'aln.fa')
 aln = os.path.join(data_dir, 'alignment.fa')
 
-maps_dir = 'nondated_maps'
+# The folder where the reconstructed ACR maps will be placed
+maps_dir = 'maps'
 
+# Number of different tree topologies to be analysed
 n=5
+
+# This is the tree for which the resampling will be performed
+# (could be selected based on the likelihood in the tree reconstruction logs)
 best = 3
 
+# Number of resampled trees to be analysed
 r=5
-m=3
+
+# Max number of tips per Location to keep in each resampled tree
 s=250
 
+# SDRMs to be analysed
 DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R', 'RT:Y181C']
-# change the tree type to fast or raxml for faster results
+
+# change the tree type to 'fast' or 'raxml' for faster results
 tree_types = 'phyml'
 
 location_col = 'Loc'
@@ -46,15 +52,19 @@ location_asia = 'Country'
 
 model='F81'
 
+# Change these variables to the root nodes of the South American, East African and Asian subtrees
+# (see the Location ACR map to select them)
 SA_root = 'node_3598'
 EA_root = 'node_3600'
 ASIA_root = 'node_634'
 
-
+# Years to be analysed (for each year a tree will be produced containing only the tips sampled not-after this year)
 YEARS = [1996, 1997, 1999, 2005, 2015]
 
 rule all:
     input:
+        expand(os.path.join(data_dir, 'distances_{type}.tab'), type=tree_types),
+
         expand(os.path.join(data_dir, 'distances_{type}.tab'), type=tree_types),
 
         expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'geo_map_{n}_{type}_{loc}_tree.html'), \

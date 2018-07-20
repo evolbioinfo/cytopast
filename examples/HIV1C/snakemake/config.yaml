@@ -5,8 +5,9 @@ fasta_phylotype: 'HIV-1C.fasta'
 data_phylotype: 'HIV-1C.tab'
 
 # check if the following executable are available on your system or update the values accordingly
-tnt: tnt
+# e.g. on a cluster one might replace mafft: mafft with something like mafft: "module load mafft/7.397; mafft"
 mafft: mafft
+tnt: tnt
 ## only one of the following tree reconstruction tools is needed, the one that corresponds to the tree_types variable in Snakefile
 fasttree: fasttree
 raxml: raxmlHPC-PTHREADS
