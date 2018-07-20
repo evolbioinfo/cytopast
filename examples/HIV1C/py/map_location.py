@@ -69,7 +69,6 @@ if '__main__' == __name__:
             return loc
         return Country.get_country_info_from_iso3(_)['Country or Area']
 
-
     df['Loc_SA'] = df['Country ISO3'].map(lambda _: get_location(_, True))
     df['Loc'] = df['Country ISO3'].map(get_location)
     df.to_csv(params.output_data, sep='\t')

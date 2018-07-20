@@ -1,16 +1,7 @@
 import logging
-from ete3 import Tree
 from ete3.parser.newick import write_newick
 
-
-def read_tree(tree_path):
-    for f in (3, 2, 5, 1, 0, 3, 4, 6, 7, 8, 9):
-        try:
-            return Tree(tree_path, format=f)
-        except:
-            continue
-    raise ValueError('Could not read the tree {}. Is it a valid newick?'.format(tree_path))
-
+from cytopast import read_tree
 
 if '__main__' == __name__:
     import argparse

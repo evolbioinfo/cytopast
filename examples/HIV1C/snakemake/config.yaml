@@ -10,5 +10,6 @@ raxml: raxmlHPC-PTHREADS
 phyml: phyml
 tnt: tnt
 mafft: mafft
+all_pairs_quartet_dist: all_pairs_quartet_dist
 src: echo ""
 py_config: "source activate cytopast"

@@ -8,6 +8,7 @@ import os
 
 configfile: "config.yaml"
 localrules: all, tnt
+ruleorder: pastml_drm_loc_subtree > pastml_drm_loc > pastml_drm
 
 src_command = config['src']
 py_config = config['py_config']
@@ -27,27 +28,66 @@ fa = os.path.join(data_dir, 'aln.fa')
 aln = os.path.join(data_dir, 'alignment.fa')
 
 maps_dir = 'nondated_maps'
+
 n=5
-m=2
-DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N']
-tree_types = ['raxml', 'phyml', 'fast']
+best = 3
+
+r=5
+m=3
+s=250
+
+DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R', 'RT:Y181C']
+# change the tree type to fast or raxml for faster results
+tree_types = 'phyml'
+
 location_col = 'Loc'
+location_sa = 'Loc_SA'
+location_asia = 'Country'
+
+model='F81'
+
+SA_root = 'node_3598'
+EA_root = 'node_3600'
+ASIA_root = 'node_634'
+
+
+YEARS = [1996, 1997, 1999, 2005, 2015]
 
 rule all:
     input:
-#        expand(os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html'),
-#                            n=range(n), type=tree_types, model='F81', loc=location_col),
-#        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html'),
-#                            n=range(n), type=tree_types, model='F81', loc=location_col, m=m),
-#        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html'),
-#                            n=range(n), type=tree_types, model='F81', DRM=DRMS),
-#        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}',
-#                            'map_{n}_{type}_{model}_{DRM}_{loc}.html'), n=range(n), type=tree_types, model='F81',
-#                            DRM=DRMS, loc=location_col),
-#        expand(os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}',
-#                            'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html'), n=range(n), type=tree_types,
-#                            model='F81', m=m, loc=location_col),
-        os.path.join(data_dir, 'distances_phyml.tab')
+        expand(os.path.join(data_dir, 'distances_{type}.tab'), type=tree_types),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'geo_map_{n}_{type}_{loc}_tree.html'), \
+        n=best, type=tree_types, loc=location_col),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', \
+        'map_{n}.tree_{type}.model_{model}.location_{loc}.threshold_{t}.tree.html'), \
+        n=range(n), type=tree_types, model='F81', loc=location_col, t=[5, 6, 10]),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', \
+        'map_{n}.tree_{type}.model_{model}.location_{loc}.threshold_{t}.tree.sampled_{s}.state_{loc}.rep_{r}.html'), \
+        n=best, type=tree_types, model=model, loc=location_col, r=range(r), s=s, t=5), os.path.join(data_dir, 'prevalence.tab'),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', '{n}_timed', \
+        'pastml_{type}_F81_tree.year_{r}.html'), r=YEARS, n=best, type=tree_types, DRM=DRMS),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'pastml_{type}_{n}_{model}_tree.html'), \
+        n=range(n), type=tree_types, DRM=DRMS, model=model),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
+        'pastml_{type}_{n}_{model}_tree.html'), n=best, type=tree_types, DRM=DRMS, model=model, loc=location_col),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
+        'pastml_{type}_{n}_{model}_subtree.root_{root}.html'), n=best, type=tree_types, \
+        DRM=['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R'], model=model, loc=location_sa, root=EA_root),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
+        'pastml_{type}_{n}_{model}_subtree.root_{root}.html'), n=best, type=tree_types, \
+        DRM=['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R'], model=model, loc=location_sa, root=SA_root),
+
+        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
+        'pastml_{type}_{n}_{model}_subtree.root_{root}.html'), n=best, type=tree_types, DRM=['RT:Y181C'], \
+        model=model, loc='Country', root=ASIA_root),
 
 rule la_metadata:
     """Keep only C sequences and update the ids"""
@@ -68,7 +108,6 @@ rule la_metadata:
             python3 {folder}/py/la_metadata.py --output_data {output.data} --output_fa {output.fa} --input_fa {input.fa}
         """)
 
-
 rule loc_metadata:
     """Add Loc columns to metadata"""
     input:
@@ -86,7 +125,6 @@ rule loc_metadata:
 
             python3 {folder}/py/map_location.py --output_data {output.data} --input_data {input.data}
         """)
-
 
 rule rename_phy:
     """Update the ids"""
@@ -106,7 +144,6 @@ rule rename_phy:
 
             python3 {folder}/py/rename_phy.py --input_data {input.data} --output_fa {output.fa} --input_fa {input.fa}
         """)
-
 
 rule merge_aln:
     '''Merges LA and Phylotype alignment'''
@@ -129,7 +166,6 @@ rule merge_aln:
             python3 {folder}/py/filter_unique_fasta_seq.py --fa {output.fa}
         """)
 
-
 rule merge_md:
     '''Merges LA and Phylotype metadata'''
     input:
@@ -148,7 +184,6 @@ rule merge_md:
 
             python3 {folder}/py/merge_md.py --data_phy {input.data_phy} --data_la {input.data_la} --data {output.data}
         """)
-
 
 rule drm_data:
     '''
@@ -183,7 +218,6 @@ alignedGeneSequences {{
             {py_config}
             python3 {folder}/py/drm_data.py --json {output.json} --data {output.tab}
         """)
-
 
 rule metadata:
     '''
@@ -232,7 +266,6 @@ rule clean_alignment:
             python3 {folder}/py/clean_aln.py --input_data {input.data} \
             --output_fa {output.fa} --input_fa {input.fa} --PR_start_pos {params.PR_start_pos} --RT_start_pos {params.RT_start_pos}
         """)
-
 
 rule convert_alignment:
     '''
@@ -343,7 +376,6 @@ rule fasttree:
             {params.fasttree} -gamma -nt -gtr -cat 6 -intree {input.tree} < {input.aln} > {output}
         """)
 
-
 rule phyml:
     '''
     Given a group of tips that are close together reconstructs the subtrees for them.
@@ -353,7 +385,7 @@ rule phyml:
         tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
     output:
         tree = os.path.join(data_dir, '{n}', 'phyml_tree.nwk'),
-        log = temp(os.path.join(data_dir, '{n}', 'phyml_tree.log'))
+        log = os.path.join(data_dir, '{n}', 'phyml_tree.log')
     threads:
         12
     params:
@@ -370,7 +402,6 @@ rule phyml:
             mv {params.aln}_phyml_stats* {output.log}
             rm {params.aln}
         """)
-
 
 rule raxml:
     '''
@@ -512,28 +543,26 @@ rule date:
             rm {input.tree}.result.*
         """)
 
-rule top_drms:
+rule prevalence:
     '''
     Selects n most common SDRMs.
     '''
     input:
         tab = metadata
     output:
-        top_drm_file = os.path.join(data_dir, 'top_{n}_SDRMS.tab')
+        tab = os.path.join(data_dir, 'prevalence.tab')
     threads:
         1
     params:
         mem = 1000,
-        name = 'top_{n}',
-        num_mutations = '{n}'
+        name = 'prev',
     run:
         shell("""
             {src_command}
             {py_config}
 
-            python3 {folder}/py/top_drms.py --input {input.tab} --output {output.top_drm_file} --n {params.num_mutations}
+            python3 {folder}/py/prevalence.py --input {input.tab} --output {output.tab}
         """)
-
 
 rule pastml_tree:
     '''
@@ -557,69 +586,56 @@ rule pastml_tree:
             python3 {folder}/py/name_tree.py --input_tree {input.tree} --output_tree {output.tree}
         """)
 
-
-rule pastml_top_drms_loc:
+rule timelined_trees:
     '''
-    Reconstructs tree ancestral states with PASTML and visualises the result.
-    '''
-    input:
-        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
-        data = metadata_loc,
-        top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
-    output:
-        map = os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html')
-    threads:
-        4
-    params:
-        mem = 4000,
-        name = 'p_{n}_{m}_{loc}',
-        loc = '{loc}',
-        model = '{model}',
-        date_col = 'Year'
-    run:
-        shell("""
-            {src_command}
-            {py_config}
-        """)
-        with open(input.top_drm_file, 'r') as f:
-            columns=f.read().split(' ')
-
-        shell("""
-            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
-            --model {params.model} --columns {columns} {params.loc} --name_column {params.loc} -v \
-            --date_column {params.date_col} --tip_size_threshold -1
-        """)
-
-rule pastml_top_drms:
-    '''
-    Reconstructs tree ancestral states with PASTML and visualises the result.
+    For a collections of years creates trees with leaves sampled not after each year.
     '''
     input:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
         data = metadata_loc,
-        top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html')
+        tree = expand(os.path.join(data_dir, '{{n}}', 'pastml_{{type}}_tree.year_{r}.nwk'), r=YEARS)
     threads:
-        4
+        1
     params:
-        mem = 4000,
-        name = 'p_{n}_{m}',
-        model = '{model}',
-        date_col = 'Year'
+        mem = 1000,
+        name = 'time_tree',
+        date_col = 'Year',
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.year_{}.nwk'),
+        years = YEARS
     run:
         shell("""
             {src_command}
             {py_config}
+            python3 {folder}/py/timeline_tree.py --in_tree {input.tree} --metadata {input.data} \
+            --out_tree_pattern {params.tree} --years {params.years} --date_column {params.date_col}
         """)
 
-        with open(input.top_drm_file, 'r') as f:
-            columns=f.read().split(' ')
-
+rule timed_pastml_drm:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = expand(os.path.join(data_dir, '{{n}}', 'pastml_{{type}}_tree.year_{r}.nwk'), r=YEARS),
+        data = metadata,
+        pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.drm_{DRM}.csv')
+    output:
+        map = expand(os.path.join(data_dir, maps_dir, '{{type}}', 'DRM_{{DRM}}', '{{n}}_timed', 'pastml_{{type}}_{{model}}_tree.year_{r}.html'), r=YEARS)
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        model = '{model}',
+        date_col = 'Year',
+        drm = '{DRM}'
+    run:
         shell("""
-            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
-            --model {params.model} --columns {columns} -v \
-            --date_column {params.date_col}
+            {src_command}
+            {py_config}
+            python3 {folder}/py/acr.py --trees {input.tree} --metadata {input.data} \
+            --htmls {output.map} --col {params.drm} --model {params.model} --date_col {params.date_col} \
+            --in_pars {input.pars} --threshold 12
         """)
 
 rule pastml_drm:
@@ -628,9 +644,10 @@ rule pastml_drm:
     '''
     input:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
-        data = metadata_loc,
+        data = metadata,
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'pastml_{type}_{n}_{model}_tree.html'),
+        pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.drm_{DRM}.csv')
     threads:
         4
     params:
@@ -643,9 +660,9 @@ rule pastml_drm:
         shell("""
             {src_command}
             {py_config}
-            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
-            --model {params.model} --columns {params.drm} -v \
-            --date_column {params.date_col}
+            python3 {folder}/py/acr.py --trees {input.tree} --metadata {input.data} \
+            --htmls {output.map} --col {params.drm} --model {params.model} --date_col {params.date_col} \
+            --out_pars {output.pars}
         """)
 
 rule pastml_drm_loc:
@@ -655,9 +672,40 @@ rule pastml_drm_loc:
     input:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
         data = metadata_loc,
+        loc_pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.loc_{loc}.threshold_5.tree.csv'),
+        drm_pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.drm_{DRM}.csv'),
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}',
-                           'map_{n}_{type}_{model}_{DRM}_{loc}.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', 'pastml_{type}_{n}_{model}_tree.html'),
+        data = os.path.join(data_dir, 'pastml', 'pastml_{type}_{n}_{model}_tree_DRM_{DRM}_Loc_{loc}.tab'),
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        model = '{model}',
+        date_col = 'Year',
+        drm = '{DRM}',
+        loc = '{loc}'
+    run:
+        shell("""
+            {src_command}
+            {py_config}
+            python3 {folder}/py/acr.py --trees {input.tree} --metadata {input.data} \
+            --htmls {output.map} --col {params.loc} {params.drm} --model {params.model} --date_col {params.date_col} \
+            --in_pars {input.loc_pars} {input.drm_pars} --out_data {output.data}
+        """)
+
+rule pastml_drm_loc_subtree:
+    '''
+    Reconstructs tree ancestral states with PASTML and visualises the result.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_subtree.root_{root}.nwk'),
+        data = metadata_loc,
+        drm_pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.drm_{DRM}.csv'),
+    output:
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', 'pastml_{type}_{n}_{model}_subtree.root_{root}.html'),
+        data = os.path.join(data_dir, 'pastml', 'pastml_{type}_{n}_{model}_subtree.root_{root}_DRM_{DRM}_Loc_{loc}.tab'),
     threads:
         4
     params:
@@ -666,62 +714,144 @@ rule pastml_drm_loc:
         model = '{model}',
         date_col = 'Year',
         drm = '{DRM}',
-        loc = '{loc}',
-        work_dir = os.path.join(data_dir, 'pastml_wd', '{type}', '{n}')
+        loc = '{loc}'
     run:
         shell("""
             {src_command}
             {py_config}
-            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
-            --model {params.model} --columns {params.drm} {params.loc} --verbose \
-            --date_column {params.date_col} --name_column {params.loc} --work_dir {params.work_dir}
+            touch {input.drm_pars}.temp.loc.csv
+            python3 {folder}/py/acr.py --trees {input.tree} --metadata {input.data} \
+            --htmls {output.map} --col {params.loc} {params.drm} --model {params.model} --date_col {params.date_col} \
+            --in_pars {input.drm_pars}.temp.loc.csv {input.drm_pars} --threshold 12 --out_data {output.data}
+            rm -rf {input.drm_pars}.temp.loc.csv
         """)
-
 
 rule pastml_loc:
     '''
     Reconstructs tree ancestral states with PASTML and visualises the result.
     '''
     input:
-        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_{suffix}.nwk'),
         data = metadata_loc
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html')
+        map = os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', 'map_{n}.tree_{type}.model_{model}.location_{loc}.threshold_{t}.{suffix}.html'),
+        pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.loc_{loc}.threshold_{t}.{suffix}.csv')
     threads:
         4
     params:
         mem = 4000,
-        name = 'p_{n}_{loc}',
+        name = 'pastml_{n}',
         loc = '{loc}',
         model = '{model}',
-        dir = os.path.join(data_dir, 'pastml'),
-        date_col = 'Year'
+        date_col = 'Year',
+        threshold = '{t}',
+        # if pars does not exist it will be just ignored, otherwise we won't redo a long PastML task
+        # just to trim a bit less in the visualisation
+        pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.loc_{loc}.threshold_5.{suffix}.csv')
     run:
         shell("""
             {src_command}
             {py_config}
-            cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
-            --model {params.model} --columns {params.loc} -v \
-            --date_column {params.date_col}
+        """)
+        import os
+        in_pars = '--in_pars {}'.format(params.pars) if os.path.isfile(params.pars) else ''
+        shell("""
+            python3 {folder}/py/acr.py --trees {input.tree} --metadata {input.data} \
+            --htmls {output.map} --col {params.loc} \
+            --model {params.model} --date_col {params.date_col}  --threshold {params.threshold} \
+            --out_pars {output.pars} {in_pars}
         """)
 
+rule geomap:
+    '''
+    Reconstructs the geographical map coloured according to PastML categories.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_{suffix}.nwk'),
+        data = metadata_loc
+    output:
+        geo_map = os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'geo_map_{n}_{type}_{loc}_{suffix}.html'),
+    threads:
+        4
+    params:
+        mem = 4000,
+        name = 'pastml_{n}',
+        loc = '{loc}',
+        country_col = 'Country'
+    run:
+        shell("""
+            {src_command}
+            {py_config}
+
+            python3 {folder}/py/get_geomap.py --tree {input.tree} --metadata {input.data} \
+            --geo_html {output.geo_map} --location_col {params.loc} --country_col {params.country_col}
+        """)
 
 rule compare_trees:
     '''
     Calculates RF distances between the trees.
     '''
     input:
-        trees = expand(os.path.join(data_dir, '{n}', 'pastml_{{type}}_tree.nwk'), n=n)
+        trees = expand(os.path.join(data_dir, '{n}', '{{type}}_tree.rooted.nwk'), n=range(n))
     output:
-        log = os.path.join(data_dir, 'distances_{type}.tab')
+        log = os.path.join(data_dir, 'distances_{type}.tab'),
+        qt = temp(os.path.join(data_dir, 'distances_{type}_qt.tab')),
+        trees = temp(os.path.join(data_dir, 'all_{}_pastml_{{type}}_trees.nwk'.format(n))),
     threads:
         1
     params:
         mem = 1000,
-        name = 'RF'
+        name = 'dist',
+        all_pairs_quartet_dist = config['all_pairs_quartet_dist'],
     run:
         shell("""
             {src_command}
             {py_config}
-            python3 {folder}/py/compare_trees.py --trees {input.trees} --output {output.log}
+            cat {input.trees} >> {output.trees}
+            {params.all_pairs_quartet_dist} {output.trees} {output.qt}
+            python3 {folder}/py/compare_trees.py --trees {input.trees} --output {output.log} --qt {output.qt}
+        """)
+
+rule sample_tree:
+    '''
+    Samples the tree to keep at most s tips per each state.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        data = metadata_loc,
+    output:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.sampled_{s}.state_{loc}.rep_{r}.nwk')
+    threads:
+        1
+    params:
+        mem = 1000,
+        name = 'sample',
+        s = '{s}',
+        col = '{loc}'
+    run:
+        shell("""
+            {src_command}
+            {py_config}
+            python3 {folder}/py/sample_tree.py --in_tree {input.tree} --metadata {input.data} --out_tree {output.tree} --n {params.s} --column {params.col}
+        """)
+
+rule sub_tree:
+    '''
+    Creates a subtree with the given root.
+    '''
+    input:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk')
+    output:
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_subtree.root_{root}.nwk')
+    threads:
+        1
+    params:
+        mem = 1000,
+        name = 'sub',
+        root = '{root}'
+    run:
+        shell("""
+            {src_command}
+            {py_config}
+            python3 {folder}/py/subtree_by_root.py --in_tree {input.tree} --root {params.root} --out_tree {output.tree}
         """)
