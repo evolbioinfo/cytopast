@@ -127,11 +127,6 @@ tree = "/path/to/the/tree/eg/tree.nwk"
 # for which we want to reconstruct ancestral states
 columns = ['Location', 'Resistant_or_not']
 
-# Columns present in the annotation table,
-# for which we want to copy existing annotations from the annotation table,
-# without inferring ancestral states
-copy_columns = ['Sex']
-
 # Path to the output compressed map visualisation
 html_compressed = "/path/to/the/future/map/eg/map.html"
 
