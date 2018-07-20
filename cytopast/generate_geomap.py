@@ -5,6 +5,8 @@ import pandas as pd
 from jinja2 import Environment, PackageLoader
 
 from cytopast.colour_generator import get_enough_colours
+from cytopast import read_tree
+from cytopast.pastml_analyser import quote
 
 ISO_EXISTS = False
 try:
@@ -12,10 +14,6 @@ try:
     ISO_EXISTS = True
 except ImportError:
     pass
-
-from cytopast import read_tree
-
-from pastml_analyser import quote
 
 
 def main():

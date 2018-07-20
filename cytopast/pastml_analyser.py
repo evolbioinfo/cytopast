@@ -21,7 +21,7 @@ PARAM_TAB_PASTML_INPUT = 'Result.tree_{tree}.category_{category}.input.params.cs
 
 
 def _work(args):
-    tree, df, work_dir, column, model, prob_method, params = args
+    tree, df, work_dir, column, model, prob_method, params, out_param_file = args
     logging.info('Processing {}'.format(column))
     category = col_name2cat(column)
     res_dir = os.path.abspath(os.path.join(work_dir, category, model, prob_method))
@@ -43,7 +43,9 @@ def _work(args):
     in_param_file = ''
     if params:
         in_param_file = parse_parameters(category, params, res_dir, tree_name, unique_states)
-    out_param_file = os.path.join(res_dir, PARAM_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
+    if not out_param_file:
+        out_param_file = os.path.join(res_dir, PARAM_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
+    os.makedirs(os.path.dirname(out_param_file), exist_ok=True)
     state_file = os.path.join(res_dir, 'state_{}.csv'.format(category))
 
     percentage_unknown = df.isnull().sum() / len(df)
@@ -170,7 +172,7 @@ def _do_nothing(args):
 
 def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, res_annotations, sep='\t', model=JC,
                                          copy_columns=None, prediction_method=MARGINAL_APPROXIMATION,
-                                         column2parameters=None):
+                                         column2parameters=None, column2out_parameters=None):
     """
     Creates a table with node states by applying PASTML to infer ancestral states for categories specified in columns,
     and copying the states from copy_columns.
@@ -186,6 +188,8 @@ def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, re
     :param res_annotations: str, path to the file where the output table will be created.
     :param sep: char (optional, by default '\t'), the column separator for the output table.
     By default is set to tab, i.e. for tab file. Set it to ',' for csv.
+    :param column2out_parameters: dict (optional), a dict column: parameter_file,
+    so that PastML writes the calculated parameters into it.
     :return: void
     """
     col2annotation_files = {}
@@ -193,9 +197,12 @@ def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, re
         with ThreadPool() as pool:
             col2annotation_files = \
                 dict(pool.map(func=_work, iterable=((tree, tip_df[column], work_dir, column, model, prediction_method,
-                                                     column2parameters[column] if column2parameters
-                                                                                  and column in column2parameters
-                                                     else None) for column in columns)))
+                                                     column2parameters[column] \
+                                                         if column2parameters and column in column2parameters else None,
+                                                     column2out_parameters[column] \
+                                                         if column2out_parameters and column in column2out_parameters \
+                                                         else None)
+                                                    for column in columns)))
     if copy_columns is None:
         copy_columns = []
     for col, af in col2annotation_files.items():
@@ -218,7 +225,7 @@ def quote(str_list):
 
 
 def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, data_sep='\t', id_index=0, columns=None,
-                    name_column=None, work_dir=None, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
+                    name_column=None, column2out_parameters=None, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
                     model=F81, prediction_method=MARGINAL_APPROXIMATION,
                     copy_columns=None, verbose=False, date_column=None, column2parameters=None):
     """
@@ -242,8 +249,8 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     :param name_column: str (optional), name of the data table column to be used for node names in the visualisation
     (must be one of those specified in columns, if columns are specified). If the data table contains only one column,
     it will be used by default.
-    :param work_dir: str (optional), path to the working dir for PASTML
-    (if not specified a temporary dir will be created).
+    :param column2out_parameters: dict (optional), a dict column: parameter_file,
+    so that PastML writes the calculated parameters into it.
     :param tip_size_threshold: int (optional, by default is 25), remove the tips of size less than threshold-th
     from the compressed map (set to inf to keep all).
     :param model: str (optional, default is pastml.F81), model to be used by PASTML.
@@ -260,13 +267,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     logging.basicConfig(level=logging.INFO if verbose else logging.ERROR,
                         format='%(asctime)s: %(message)s', datefmt="%H:%M:%S", filename=None)
 
-    using_temp_dir = False
-
-    if not work_dir:
-        using_temp_dir = True
-        work_dir = tempfile.mkdtemp()
-    else:
-        os.makedirs(work_dir, exist_ok=True)
+    work_dir = tempfile.mkdtemp()
 
     if not copy_columns:
         copy_columns = []
@@ -330,7 +331,8 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
                                          columns=columns, work_dir=work_dir,
                                          res_annotations=res_annotations,
                                          sep=data_sep, model=model, copy_columns=copy_columns,
-                                         prediction_method=prediction_method, column2parameters=column2parameters)
+                                         prediction_method=prediction_method, column2parameters=column2parameters,
+                                         column2out_parameters=column2out_parameters)
 
     if html or html_compressed:
         if date_column:
@@ -342,8 +344,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
                          columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
                          tip_size_threshold=tip_size_threshold, min_date=min_date, max_date=max_date)
 
-    if using_temp_dir:
-        shutil.rmtree(work_dir)
+    shutil.rmtree(work_dir)
     return root
 
 
@@ -455,9 +456,8 @@ def main():
                                    '"scaling factor" (then the value should be the scaling factor for three branches, '
                                    'e.g. set to 1 to keep the original branches), '
                                    'or "epsilon" (the values specifies a min tip branch length to use for smoothing)')
-    pastml_group.add_argument('--work_dir', required=False, default=None, type=str,
-                              help="the working dir for PASTML to put intermediate files into "
-                                   "(if not specified a temporary dir will be created).")
+    pastml_group.add_argument('--column2out_parameters', required=False, default=None, type=dict,
+                              help="(optional) a dict column: parameter_file, so that PastML writes the calculated parameters into it.")
 
     vis_group = parser.add_argument_group('visualisation-related arguments')
     vis_group.add_argument('-n', '--name_column', type=str, default=None,
