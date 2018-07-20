@@ -58,7 +58,7 @@ if '__main__' == __name__:
     df = pd.read_table(params.input_data, header=0, index_col=0)
 
     def get_location(_, sa=False):
-        if pd.isna(_):
+        if pd.isnull(_):
             return None
         loc = iso32loc[_]
         if 'Indian' in loc:

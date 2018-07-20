@@ -28,7 +28,7 @@ aln = os.path.join(data_dir, 'alignment.fa')
 
 maps_dir = 'nondated_maps'
 n=5
-m=3
+m=2
 DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N']
 tree_types = ['raxml', 'phyml', 'fast']
 location_col = 'Loc'
@@ -564,7 +564,7 @@ rule pastml_top_drms_loc:
     '''
     input:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
-        data = metadata,
+        data = metadata_loc,
         top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
     output:
         map = os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs_Location_{loc}', 'map_{n}_{type}_{model}_{loc}_{m}_top_SDRMS.html')
@@ -572,7 +572,7 @@ rule pastml_top_drms_loc:
         4
     params:
         mem = 4000,
-        name = 'pastml_{n}',
+        name = 'p_{n}_{m}_{loc}',
         loc = '{loc}',
         model = '{model}',
         date_col = 'Year'
@@ -587,7 +587,7 @@ rule pastml_top_drms_loc:
         shell("""
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {columns} {params.loc} --name_column {params.loc} -v \
-            --date_column {params.date_col}
+            --date_column {params.date_col} --tip_size_threshold -1
         """)
 
 rule pastml_top_drms:
@@ -596,7 +596,7 @@ rule pastml_top_drms:
     '''
     input:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
-        data = metadata,
+        data = metadata_loc,
         top_drm_file = os.path.join(data_dir, 'top_{m}_SDRMS.tab')
     output:
         map = os.path.join(data_dir, maps_dir, '{type}', '{m}_top_DRMs', 'map_{n}_{type}_{model}_{m}_top_SDRMS.html')
@@ -604,7 +604,7 @@ rule pastml_top_drms:
         4
     params:
         mem = 4000,
-        name = 'pastml_{n}',
+        name = 'p_{n}_{m}',
         model = '{model}',
         date_col = 'Year'
     run:
@@ -628,14 +628,14 @@ rule pastml_drm:
     '''
     input:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
-        data = metadata,
+        data = metadata_loc,
     output:
         map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'map_{n}_{type}_{model}_{DRM}.html')
     threads:
         4
     params:
         mem = 4000,
-        name = 'pastml_{n}',
+        name = 'p_{n}_{DRM}',
         model = '{model}',
         date_col = 'Year',
         drm = '{DRM}'
@@ -654,7 +654,7 @@ rule pastml_drm_loc:
     '''
     input:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
-        data = metadata,
+        data = metadata_loc,
     output:
         map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}_Location_{loc}',
                            'map_{n}_{type}_{model}_{DRM}_{loc}.html')
@@ -662,19 +662,21 @@ rule pastml_drm_loc:
         4
     params:
         mem = 4000,
-        name = 'pastml_{n}',
+        name = 'p_{n}_{DRM}_{loc}',
         model = '{model}',
         date_col = 'Year',
         drm = '{DRM}',
-        loc = '{loc}'
+        loc = '{loc}',
+        work_dir = os.path.join(data_dir, 'pastml_wd', '{type}', '{n}')
     run:
         shell("""
             {src_command}
             {py_config}
             cytopast --tree {input.tree} --data {input.data} --html_compressed {output.map} \
             --model {params.model} --columns {params.drm} {params.loc} --verbose \
-            --date_column {params.date_col} --name_column {params.loc}
+            --date_column {params.date_col} --name_column {params.loc} --work_dir {params.work_dir}
         """)
+
 
 rule pastml_loc:
     '''
@@ -682,14 +684,14 @@ rule pastml_loc:
     '''
     input:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
-        data = metadata
+        data = metadata_loc
     output:
         map = os.path.join(data_dir, maps_dir, '{type}', 'Location_{loc}', 'map_{n}_{type}_{model}_{loc}.html')
     threads:
         4
     params:
         mem = 4000,
-        name = 'pastml_{n}',
+        name = 'p_{n}_{loc}',
         loc = '{loc}',
         model = '{model}',
         dir = os.path.join(data_dir, 'pastml'),
