@@ -430,28 +430,6 @@ rule raxml:
             mv "{params.dir}/RAxML_log.RAXML_{params.n}" {output.log}
         """)
 
-rule extract_dates:
-    '''
-    Reformat metadata into date file readable by LSD.
-    '''
-    input:
-        tab = metadata
-    output:
-        tab = os.path.join(data_dir, 'dates.tab')
-    params:
-        mem = 1000,
-        name = 'dates',
-        date_col = 'Year',
-        c_tip = 'b(1980,2017)'
-    threads: 1
-    run:
-        shell("""
-            {src_command}
-            {py_config}
-
-            python3 {folder}/py/extract_dates.py --data {input.tab} --dates {output.tab} --c_tip params.c_tip --date_col params.date_col
-        """)
-
 rule get_seq_ids:
     '''
     Extract sequence ids of interest.
@@ -516,31 +494,6 @@ rule collapse:
             {py_config}
 
             python3 {folder}/py/collapse.py --input_tree {input.tree} --feature {params.feature} --output_tree {output.tree} --threshold {params.threshold}
-        """)
-
-rule date:
-    '''
-    Date a tree.
-    '''
-    input:
-        tree = '{tree}.nwk',
-        dates = os.path.join(data_dir, 'dates.tab')
-    output:
-        tree = '{tree}.dated.nwk',
-        log = '{tree}.lsd.log',
-    threads:
-        1
-    params:
-        mem = 2000,
-        name = 'date',
-        lsd = config['lsd']
-    run:
-        shell("""
-            {src_command}
-            {params.lsd} -i {input.tree} -d {input.dates} -v 2 -c -s 882 -f 1000 -t 1e-3
-            mv {input.tree}.result.date.newick {output.tree}
-            mv {input.tree}.result {output.log}
-            rm {input.tree}.result.*
         """)
 
 rule prevalence:
