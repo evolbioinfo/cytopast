@@ -7,7 +7,7 @@ from multiprocessing.pool import ThreadPool
 import numpy as np
 import pandas as pd
 import pastml
-from pastml import JOINT, MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JC, F81, DOWNPASS, ACCTRAN, DELTRAN
+from pastml import JOINT, MARGINAL, MARGINAL_APPROXIMATION, MAX_POSTERIORI, JC, F81, EFT, DOWNPASS, ACCTRAN, DELTRAN
 
 from cytopast import compress_tree, read_tree, \
     pasml_annotations2cytoscape_annotation, annotate_tree_with_cyto_metadata, name_tree, collapse_zero_branches, \
@@ -170,7 +170,7 @@ def _do_nothing(args):
     return column, res_file
 
 
-def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, res_annotations, sep='\t', model=JC,
+def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, res_annotations, sep='\t', model=F81,
                                          copy_columns=None, prediction_method=MARGINAL_APPROXIMATION,
                                          column2parameters=None, column2out_parameters=None):
     """
@@ -180,7 +180,7 @@ def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, re
     ancestral state prediction method to be used by PASTML.
     :param columns: list of columns to be processed with PASTML.
     :param copy_columns: list of columns to be copied as-is.
-    :param model: str (optional, default is pastml.JC), model to be used by PASTML.
+    :param model: str (optional, default is pastml.F81), model to be used by PASTML.
     :param tree: str, path to the tree in newick format.
     :param df: pandas.DataFrame containing tree node names as indices and categories as columns.
     :param tip_df: pandas.DataFrame containing only tree tip names as indices and categories as columns.
@@ -251,8 +251,8 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     it will be used by default.
     :param column2out_parameters: dict (optional), a dict column: parameter_file,
     so that PastML writes the calculated parameters into it.
-    :param tip_size_threshold: int (optional, by default is 25), remove the tips of size less than threshold-th
-    from the compressed map (set to inf to keep all).
+    :param tip_size_threshold: int (optional, by default is 15), remove the tips of size less than threshold-th
+    from the compressed map (set to 1e10 to keep all). The larger it is the less tips will be trimmed.
     :param model: str (optional, default is pastml.F81), model to be used by PASTML.
     :param prediction_method: str (optional, default is pastml.MARGINAL_APPROXIMATION),
     ancestral state prediction method to be used by PASTML.
@@ -443,7 +443,7 @@ def main():
     tree_group.add_argument('-t', '--tree', help="the input tree in newick format.", type=str, required=True)
 
     pastml_group = parser.add_argument_group('ancestral-state inference-related arguments')
-    pastml_group.add_argument('-m', '--model', required=False, default=F81, choices=[JC, F81], type=str,
+    pastml_group.add_argument('-m', '--model', required=False, default=F81, choices=[JC, F81, EFT], type=str,
                               help='the evolutionary model to be used by PASTML, by default {}.'.format(F81))
     pastml_group.add_argument('--prediction_method', required=False, default=MARGINAL_APPROXIMATION,
                               choices=[MARGINAL_APPROXIMATION, MARGINAL, MAX_POSTERIORI, JOINT,
@@ -467,7 +467,7 @@ def main():
                                 "If the data table contains only one column it will be used by default.")
     vis_group.add_argument('--tip_size_threshold', type=int, default=REASONABLE_NUMBER_OF_TIPS,
                            help="Remove the tips of size less than the threshold-th from the compressed map "
-                                "(set to inf to keep all tips).")
+                                "(set to 1e10 to keep all tips).  The larger it is the less tips will be trimmed.")
 
     out_group = parser.add_argument_group('output-related arguments')
     out_group.add_argument('-o', '--out_data', required=False, type=str,

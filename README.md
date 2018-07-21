@@ -138,3 +138,7 @@ pastml_pipeline(data=data, data_sep=',', columns=columns, name_column='Location'
                 html_compressed=html_compressed, html=html, 
                 verbose=True)
 ```
+
+### Examples
+
+See the [examples folder](https://github.com/evolbioinfo/cytopast/tree/master/examples) for ideas :)

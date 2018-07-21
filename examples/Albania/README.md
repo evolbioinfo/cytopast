@@ -6,6 +6,6 @@ This data set comes from the study by [Chevenet *et al.*, 2013](https://doi.org/
 
 It contains a tree with 152 tips, and an annotation file describing the Country of sampling for each tree tip.
 
-## Ancestral state reconstruction analysis
+## Ancestral character reconstruction (ACR) analysis
 
-The main.py script performs the ancestral character reconstruction (ACR) of the Country with different methods and models available in PastML.
+The main.py script performs the ACR of the Country with different methods and models available in PastML.
