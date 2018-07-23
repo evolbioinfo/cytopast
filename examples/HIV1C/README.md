@@ -31,8 +31,7 @@ We detected SDRMs in the alignment, using the Sierra web service of the Stanford
 #### Reconstruction
 We removed the SDRM positions from the alignment and reconstructed 5 most parsimonious trees using TNT 1.5 [[Goloboff *et al.*, 2016](https://doi.org/10.1111/cla.12160)], 
 which were used as starting trees for 5 runs of PhyML 3.0 [[Guindon *et al.*, 2010](https://doi.org/10.1093/sysbio/syq010)] with GTR+I+Γ6 substitution model and aLRT SH-like branch supports. 
-*(The PhyML reconstruction can be replaced with RAxML or FastTree using the tree_types variable in the Snakefile, 
-in which case also the SA_root, EA_root, and ASIA_root should be updated accordingly)*.
+*(The PhyML reconstruction can be replaced with RAxML or FastTree using the tree_types variable in the Snakefile)*.
 
 #### Rooting
 The resulting trees were rooted with the outgroup sequences, which were subsequently removed from the trees. 
@@ -69,7 +68,7 @@ and performed ACR of the Location for 5 such trees.
     * sierrapy (>=0.2.1)
     * scipy (>=1.1.0)
 3. Install the following software:
-    1. One of the following tree reconstruction tools (update tree_types, SA_root, EA_root, and ASIA_root variables in the Snakefile accordingly)* variable in the Snakefile accordingly):
+    1. One of the following tree reconstruction tools _(update tree_types variable in the Snakefile accordingly)_:
         * FastTree 2 [[Price *et al.*, 2010](https://doi.org/10.1371/journal.pone.0009490)]
         * RAxML [[Stamatakis, 2014](https://doi.org/10.1093/bioinformatics/btu033)]
         * PhyML 3.0 [[Guindon *et al.*, 2010](https://doi.org/10.1093/sysbio/syq010)]

@@ -5,7 +5,7 @@ import os
 
 configfile: "config.yaml"
 localrules: all, tnt
-ruleorder: pastml_drm_loc_subtree > pastml_drm_loc > pastml_drm
+ruleorder: pastml_drm > pastml_drm_loc > raxml > phyml > fasttree > best_tree
 
 src_command = config['src']
 py_config = config['py_config']
@@ -30,10 +30,6 @@ maps_dir = 'maps'
 # Number of different tree topologies to be analysed
 n=5
 
-# This is the tree for which the resampling will be performed
-# (could be selected based on the likelihood in the tree reconstruction logs)
-best = 3
-
 # Number of resampled trees to be analysed
 r=5
 
@@ -43,61 +39,48 @@ s=250
 # SDRMs to be analysed
 DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R', 'RT:Y181C']
 
-# change the tree type to 'fast' or 'raxml' for faster results
-tree_types = 'phyml'
+# choose one or more of the tree types below
+tree_types = ['phyml', 'fast', 'raxml']
 
 location_col = 'Loc'
-location_sa = 'Loc_SA'
-location_asia = 'Country'
 
 model='F81'
 
-# Change these variables to the root nodes of the South American, East African and Asian subtrees
-# (see the Location ACR map to select them)
-SA_root = 'node_3598'
-EA_root = 'node_3600'
-ASIA_root = 'node_634'
 
 # Years to be analysed (for each year a tree will be produced containing only the tips sampled not-after this year)
-YEARS = [1996, 1997, 1999, 2005, 2015]
+# last is the latest year in the dataset, first is the first year containing a resistance mutation of interest,
+# mid is the last year - 10.
+YEARS = ['last', 'mid', 'first']
 
 rule all:
     input:
-        expand(os.path.join(data_dir, 'distances_{type}.tab'), type=tree_types),
+        trees = expand(os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'), n=range(n), type=tree_types),
+        dists = expand(os.path.join(data_dir, 'distances_{type}.tab'), type=tree_types),
+        drm_prevalence = os.path.join(data_dir, 'prevalence.tab'),
+        best_trees = expand(os.path.join(data_dir, 'best', 'pastml_{type}_tree.nwk'), type=tree_types),
 
-        expand(os.path.join(data_dir, 'distances_{type}.tab'), type=tree_types),
+        geo_map = expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'geo_map_best_{type}_{loc}_tree.html'), \
+        type=tree_types, loc=location_col),
 
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'geo_map_{n}_{type}_{loc}_tree.html'), \
-        n=best, type=tree_types, loc=location_col),
-
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', \
+        loc_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', \
         'map_{n}.tree_{type}.model_{model}.location_{loc}.threshold_{t}.tree.html'), \
-        n=range(n), type=tree_types, model='F81', loc=location_col, t=[5, 6, 10]),
+        n=list(range(n)) + ['best'], type=tree_types, model='F81', loc=location_col, t=[5, 6, 10]),
 
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', \
-        'map_{n}.tree_{type}.model_{model}.location_{loc}.threshold_{t}.tree.sampled_{s}.state_{loc}.rep_{r}.html'), \
-        n=best, type=tree_types, model=model, loc=location_col, r=range(r), s=s, t=5), os.path.join(data_dir, 'prevalence.tab'),
+        sampled_loc_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', \
+        'map_best.tree_{type}.model_{model}.location_{loc}.threshold_{t}.tree.sampled_{s}.state_{loc}.rep_{r}.html'), \
+        type=tree_types, model=model, loc=location_col, r=range(r), s=s, t=5),
 
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', '{n}_timed', \
-        'pastml_{type}_F81_tree.year_{r}.html'), r=YEARS, n=best, type=tree_types, DRM=DRMS),
+        drm_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'pastml_{type}_best_{model}_tree.html'), \
+        type=tree_types, DRM=DRMS, model=model),
 
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'pastml_{type}_{n}_{model}_tree.html'), \
-        n=range(n), type=tree_types, DRM=DRMS, model=model),
+        drm_loc_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
+        'pastml_{type}_best_{model}_tree.html'), type=tree_types, DRM=DRMS, model=model, loc=location_col),
 
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
-        'pastml_{type}_{n}_{model}_tree.html'), n=best, type=tree_types, DRM=DRMS, model=model, loc=location_col),
+        drm_times_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'best_timed', \
+        'pastml_{type}_{model}_tree.year_{r}.html'), r=YEARS, model=model, type=tree_types, DRM=DRMS),
 
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
-        'pastml_{type}_{n}_{model}_subtree.root_{root}.html'), n=best, type=tree_types, \
-        DRM=['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R'], model=model, loc=location_sa, root=EA_root),
-
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
-        'pastml_{type}_{n}_{model}_subtree.root_{root}.html'), n=best, type=tree_types, \
-        DRM=['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R'], model=model, loc=location_sa, root=SA_root),
-
-        expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
-        'pastml_{type}_{n}_{model}_subtree.root_{root}.html'), n=best, type=tree_types, DRM=['RT:Y181C'], \
-        model=model, loc='Country', root=ASIA_root),
+        TDR_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc1}', 'pastml_{type}_best_{model}_subtree.TDR_loc_{loc}.html'), \
+        model=model, type=tree_types, DRM=DRMS, loc=location_col, loc1='Country')
 
 rule la_metadata:
     """Keep only C sequences and update the ids"""
@@ -374,7 +357,8 @@ rule fasttree:
         aln = os.path.join(data_dir, 'alignment.nodrm.phylip'),
         tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
     output:
-        os.path.join(data_dir, '{n}', 'fast_tree.nwk')
+        tree = os.path.join(data_dir, '{n}', 'fast_tree.nwk'),
+        log = os.path.join(data_dir, '{n}', 'fast_tree.log')
     threads: 6
     params:
         mem = 8000,
@@ -383,7 +367,7 @@ rule fasttree:
     run:
         shell("""
             {src_command}
-            {params.fasttree} -gamma -nt -gtr -cat 6 -intree {input.tree} < {input.aln} > {output}
+            {params.fasttree} -gamma -nt -gtr -cat 6 -intree {input.tree} -log {output.log} < {input.aln} > {output.tree}
         """)
 
 rule phyml:
@@ -422,7 +406,7 @@ rule raxml:
         tree = os.path.join(data_dir, '{n}', 'pars_tree.nwk')
     output:
         tree = os.path.join(data_dir, '{n}', 'raxml_tree.nwk'),
-        log = os.path.join(data_dir, '{n}', 'raxml.log'),
+        log = os.path.join(data_dir, '{n}', 'raxml_tree.log'),
     threads:
         12
     params:
@@ -437,7 +421,9 @@ rule raxml:
             cd {params.dir}
             {params.raxml} -f e  -t  {input.tree} -m GTRGAMMA -s {input.aln} -c 6 -n "RAXML_{params.n}" -T {threads} -b 239 -N 1000
             mv "{params.dir}/RAxML_result.RAXML_{params.n}" {output.tree}
-            mv "{params.dir}/RAxML_log.RAXML_{params.n}" {output.log}
+            mv "{params.dir}/RAxML_info.RAXML_{params.n}" {output.log}
+            rm -rf "{params.dir}/RAxML_log.RAXML_{params.n}"
+            rm -rf "{params.dir}/RAxML_binaryModelParameters.RAXML_{params.n}"
         """)
 
 rule get_seq_ids:
@@ -549,6 +535,31 @@ rule pastml_tree:
             python3 {folder}/py/name_tree.py --input_tree {input.tree} --output_tree {output.tree}
         """)
 
+
+rule best_tree:
+    '''
+    Copies a tree with the highest likelihood in the best folder
+    '''
+    input:
+        trees=expand(os.path.join(data_dir, '{m}', 'pastml_{{type}}_tree.nwk'), m=range(n)),
+        logs=expand(os.path.join(data_dir, '{m}', '{{type}}_tree.log'), m=range(n)),
+    output:
+        tree=os.path.join(data_dir, 'best', 'pastml_{type}_tree.nwk'),
+        log=os.path.join(data_dir, 'best', '{type}_tree.log'),
+    threads:
+        1
+    params:
+        mem = 1000,
+        name = 'best',
+        type = '{type}'
+    run:
+        shell("""
+            {src_command}
+            {py_config}
+
+            python3 {folder}/py/get_best_tree.py --trees {input.trees} --logs {input.logs} --out_tree {output.tree} --out_log {output.log} --type {params.type}
+        """)
+
 rule timelined_trees:
     '''
     For a collections of years creates trees with leaves sampled not after each year.
@@ -557,21 +568,21 @@ rule timelined_trees:
         tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
         data = metadata_loc,
     output:
-        tree = expand(os.path.join(data_dir, '{{n}}', 'pastml_{{type}}_tree.year_{r}.nwk'), r=YEARS)
+        tree = expand(os.path.join(data_dir, '{{n}}', 'pastml_{{type}}_tree_drm_{{drm}}.year_{r}.nwk'), r=YEARS)
     threads:
         1
     params:
         mem = 1000,
         name = 'time_tree',
         date_col = 'Year',
-        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.year_{}.nwk'),
-        years = YEARS
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree_drm_{drm}.year_{}.nwk'),
+        drm = '{drm}'
     run:
         shell("""
             {src_command}
             {py_config}
             python3 {folder}/py/timeline_tree.py --in_tree {input.tree} --metadata {input.data} \
-            --out_tree_pattern {params.tree} --years {params.years} --date_column {params.date_col}
+            --out_tree_pattern {params.tree} --drm {params.drm} --date_column {params.date_col}
         """)
 
 rule timed_pastml_drm:
@@ -579,7 +590,7 @@ rule timed_pastml_drm:
     Reconstructs tree ancestral states with PASTML and visualises the result.
     '''
     input:
-        tree = expand(os.path.join(data_dir, '{{n}}', 'pastml_{{type}}_tree.year_{r}.nwk'), r=YEARS),
+        tree = expand(os.path.join(data_dir, '{{n}}', 'pastml_{{type}}_tree_drm_{{DRM}}.year_{r}.nwk'), r=YEARS),
         data = metadata,
         pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.drm_{DRM}.csv')
     output:
@@ -663,29 +674,37 @@ rule pastml_drm_loc_subtree:
     Reconstructs tree ancestral states with PASTML and visualises the result.
     '''
     input:
-        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_subtree.root_{root}.nwk'),
+        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk'),
+        states = os.path.join(data_dir, 'pastml', 'pastml_{type}_{n}_{model}_tree_DRM_{DRM}_Loc_{loc}.tab'),
         data = metadata_loc,
         drm_pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.drm_{DRM}.csv'),
     output:
-        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', 'pastml_{type}_{n}_{model}_subtree.root_{root}.html'),
-        data = os.path.join(data_dir, 'pastml', 'pastml_{type}_{n}_{model}_subtree.root_{root}_DRM_{DRM}_Loc_{loc}.tab'),
+        map = os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc1}', 'pastml_{type}_{n}_{model}_subtree.TDR_loc_{loc}.html'),
+        subtree = temp(os.path.join(data_dir, '{n}', 'pastml_{type}_subtree.drm_{DRM}.loc_{loc}.loc1_{loc1}.model_{model}.nwk'))
     threads:
         4
     params:
         mem = 4000,
-        name = 'p_{n}_{DRM}_{loc}',
+        name = 'p_{n}_{DRM}_{loc1}',
         model = '{model}',
         date_col = 'Year',
         drm = '{DRM}',
-        loc = '{loc}'
+        loc = '{loc}',
+        loc1 = '{loc1}'
     run:
         shell("""
             {src_command}
             {py_config}
+
+            python3 {folder}/py/find_TDR_root.py --tree {input.tree} --states {input.states} --drm {params.drm} \
+            --loc {params.loc} --out_tree {output.subtree}
+
             touch {input.drm_pars}.temp.loc.csv
-            python3 {folder}/py/acr.py --trees {input.tree} --metadata {input.data} \
-            --htmls {output.map} --col {params.loc} {params.drm} --model {params.model} --date_col {params.date_col} \
-            --in_pars {input.drm_pars}.temp.loc.csv {input.drm_pars} --threshold 12 --out_data {output.data}
+
+            python3 {folder}/py/acr.py --trees {output.subtree} --metadata {input.data} \
+            --htmls {output.map} --col {params.loc1} {params.drm} --model {params.model} --date_col {params.date_col} \
+            --in_pars {input.drm_pars}.temp.loc.csv {input.drm_pars} --threshold 12
+
             rm -rf {input.drm_pars}.temp.loc.csv
         """)
 
@@ -698,7 +717,7 @@ rule pastml_loc:
         data = metadata_loc
     output:
         map = os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', 'map_{n}.tree_{type}.model_{model}.location_{loc}.threshold_{t}.{suffix}.html'),
-        pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.loc_{loc}.threshold_{t}.{suffix}.csv')
+        pars = os.path.join(data_dir, 'pastml', 'params.model_{model}.tree_{n}.type_{type}.loc_{loc}.threshold_{t}.{suffix}.csv'),
     threads:
         4
     params:
@@ -796,25 +815,4 @@ rule sample_tree:
             {src_command}
             {py_config}
             python3 {folder}/py/sample_tree.py --in_tree {input.tree} --metadata {input.data} --out_tree {output.tree} --n {params.s} --column {params.col}
-        """)
-
-rule sub_tree:
-    '''
-    Creates a subtree with the given root.
-    '''
-    input:
-        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_tree.nwk')
-    output:
-        tree = os.path.join(data_dir, '{n}', 'pastml_{type}_subtree.root_{root}.nwk')
-    threads:
-        1
-    params:
-        mem = 1000,
-        name = 'sub',
-        root = '{root}'
-    run:
-        shell("""
-            {src_command}
-            {py_config}
-            python3 {folder}/py/subtree_by_root.py --in_tree {input.tree} --root {params.root} --out_tree {output.tree}
         """)
