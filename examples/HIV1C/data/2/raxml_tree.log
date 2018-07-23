@@ -1,0 +1,120 @@
+
+
+IMPORTANT WARNING: Sequences AF447850 and AY713415 are exactly identical
+
+
+IMPORTANT WARNING: Sequences AY585268 and AY838567 are exactly identical
+
+
+IMPORTANT WARNING: Sequences AY585267 and AY838566 are exactly identical
+
+
+IMPORTANT WARNING: Sequences AY585265 and AY838568 are exactly identical
+
+
+IMPORTANT WARNING: Sequences AY585264 and AY838565 are exactly identical
+
+
+IMPORTANT WARNING: Sequences BD437626 and AY162224 are exactly identical
+
+
+IMPORTANT WARNING: Sequences BD437615 and AY162223 are exactly identical
+
+
+IMPORTANT WARNING: Sequences FJ199602 and DQ369978 are exactly identical
+
+
+IMPORTANT WARNING: Sequences FJ199544 and AY463218 are exactly identical
+
+
+IMPORTANT WARNING: Sequences AB254154 and AB254153 are exactly identical
+
+
+IMPORTANT WARNING: Sequences FJ496214 and FJ496209 are exactly identical
+
+
+IMPORTANT WARNING: Sequences FJ496189 and FJ496186 are exactly identical
+
+IMPORTANT WARNING
+Found 12 sequences that are exactly identical to other sequences in the alignment.
+Normally they should be excluded from the analysis.
+
+An alignment file with sequence duplicates removed has already
+been printed to file /home/azhukova/Pasteur/projects/cytopast/examples/HIV1C/data/alignment.nodrm.phylip.reduced
+
+
+Using BFGS method to optimize GTR rate parameters, to disable this specify "--no-bfgs" 
+
+
+
+This is RAxML version 8.2.11 released by Alexandros Stamatakis on June 2017.
+
+With greatly appreciated code contributions by:
+Andre Aberer      (HITS)
+Simon Berger      (HITS)
+Alexey Kozlov     (HITS)
+Kassian Kobert    (HITS)
+David Dao         (KIT and HITS)
+Sarah Lutteropp   (KIT and HITS)
+Nick Pattengale   (Sandia)
+Wayne Pfeiffer    (SDSC)
+Akifumi S. Tanabe (NRIFS)
+Charlie Taylor    (UF)
+
+
+Alignment has 849 distinct alignment patterns
+
+Proportion of gaps and completely undetermined characters in this alignment: 0.04%
+
+RAxML Model Optimization up to an accuracy of 0.100000 log likelihood units
+
+Using 1 distinct models/data partitions with joint branch length optimization
+
+
+All free model parameters will be estimated by RAxML
+GAMMA model of rate heterogeneity, ML estimate of alpha-parameter
+
+GAMMA Model parameters will be estimated up to an accuracy of 0.1000000000 Log Likelihood units
+
+Partition: 0
+Alignment Patterns: 849
+Name: No Name Provided
+DataType: DNA
+Substitution Matrix: GTR
+
+
+
+
+RAxML was called as follows:
+
+raxmlHPC-PTHREADS -f e -t /home/azhukova/Pasteur/projects/cytopast/examples/HIV1C/data/2/pars_tree.nwk -m GTRGAMMA -s /home/azhukova/Pasteur/projects/cytopast/examples/HIV1C/data/alignment.nodrm.phylip -c 6 -n RAXML_2 -T 4 -b 239 -N 1000 
+
+
+
+Model parameters (binary file format) written to: /home/azhukova/Pasteur/projects/cytopast/examples/HIV1C/data/2/RAxML_binaryModelParameters.RAXML_2
+
+
+Overall Time for Tree Evaluation 109.716783
+Final GAMMA  likelihood: -319549.317565
+
+Number of free parameters for AIC-TEST(BR-LEN): 7286
+Number of free parameters for AIC-TEST(NO-BR-LEN): 9
+
+
+Model Parameters of Partition 0, Name: No Name Provided, Type of Data: DNA
+alpha: 0.460983
+Tree-Length: 183.004360
+rate A <-> C: 2.023415
+rate A <-> G: 7.125607
+rate A <-> T: 1.079241
+rate C <-> G: 0.812373
+rate C <-> T: 11.405273
+rate G <-> T: 1.000000
+
+freq pi(A): 0.402193
+freq pi(C): 0.171027
+freq pi(G): 0.213831
+freq pi(T): 0.212949
+
+Final tree written to:                 /home/azhukova/Pasteur/projects/cytopast/examples/HIV1C/data/2/RAxML_result.RAXML_2
+Execution Log File written to:         /home/azhukova/Pasteur/projects/cytopast/examples/HIV1C/data/2/RAxML_log.RAXML_2
