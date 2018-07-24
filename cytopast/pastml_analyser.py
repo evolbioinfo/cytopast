@@ -15,16 +15,117 @@ from cytopast import compress_tree, read_tree, \
 from cytopast.colour_generator import get_enough_colours, WHITE
 from cytopast.cytoscape_manager import save_as_cytoscape_html
 
-STATES_TAB_PASTML_OUTPUT = 'Result.tree_{tree}.category_{category}.csv'
-PARAM_TAB_PASTML_OUTPUT = 'Result.tree_{tree}.category_{category}.params.csv'
-PARAM_TAB_PASTML_INPUT = 'Result.tree_{tree}.category_{category}.input.params.csv'
+CYTOPAST_ANCESTRAL_STATES_CSV_ML = 'combined_ancestral_states.states_{states}.method_{method}.model_{model}.csv'
+CYTOPAST_ANCESTRAL_STATES_CSV_MP = 'combined_ancestral_states.states_{states}.method_{method}.csv'
+CYTOPAST_NAMED_TREE_NWK = 'named.tree_{tree}'
+
+PASTML_ANCESTRAL_STATES_CSV_ML = 'ancestral_states.state_{state}.method_{method}.model_{model}.csv'
+PASTML_ANCESTRAL_STATES_CSV_MP = 'ancestral_states.state_{state}.method_{method}.csv'
+PASTML_TIP_STATES_CSV = 'input_tip_states.state_{state}.csv'
+PASTML_PARAMS_CSV = 'params.state_{state}.method_{method}.model_{model}.csv'
+PASTML_MARGINAL_PROBS_CSV = 'marginal_probabilities.state_{state}.model_{model}.csv'
+PASTML_PARAMS_CSV_INPUT = 'input_params.state_{state}.method_{method}.model_{model}.csv'
+
+
+def is_marginal(method):
+    """
+    Checks if the method is marginal, i.e. is either marginal itself, or MAP, or MPPA.
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :return: bool
+    """
+    return method in [pastml.MARGINAL_APPROXIMATION, pastml.MARGINAL, pastml.MAX_POSTERIORI]
+
+
+def is_ml(method):
+    """
+    Checks if the method is max likelihood, i.e. is either joint or one of the marginal ones
+    (marginal itself, or MAP, or MPPA).
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :return: bool
+    """
+    return method == pastml.JOINT or is_marginal(method)
+
+
+def get_pastml_parameter_file(method, model, column, is_input=False):
+    """
+    Get the filename where the PastML parameters are saved (for non-ML methods will be None, as they have no parameters).
+    This file is inside the work_dir that can be specified for the pastml_pipeline method.
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :param model: str, the state evolution model used by PASTML.
+    :param column: str, the column for which ancestral states are reconstructed with PASTML.
+    :param is_input: bool, whether this is an input or an output file for PASTML.
+    :return: str, filename or None for non-ML methods
+    """
+    if not is_ml(method):
+        return None
+    template = PASTML_PARAMS_CSV_INPUT if is_input else PASTML_PARAMS_CSV
+    return template.format(state=col_name2cat(column), method=method, model=model)
+
+
+def get_pastml_ancestral_state_file(method, model, column):
+    """
+    Get the filename where the PastML ancestral states are saved.
+    This file is inside the work_dir that can be specified for the pastml_pipeline method.
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :param model: str, the state evolution model used by PASTML.
+    :param column: str, the column for which ancestral states are reconstructed with PASTML.
+    :return: str, filename
+    """
+    template = PASTML_ANCESTRAL_STATES_CSV_ML if is_ml(method) else PASTML_ANCESTRAL_STATES_CSV_MP
+    return template.format(state=col_name2cat(column), method=method, model=model)
+
+
+def get_combined_ancestral_state_file(method, model, columns):
+    """
+    Get the filename where the combined ancestral states are saved (for one or several columns).
+    This file is inside the work_dir that can be specified for the pastml_pipeline method.
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :param model: str, the state evolution model used by PASTML.
+    :param columns: list of str, the column(s) for which ancestral states are reconstructed with PASTML.
+    :return: str, filename
+    """
+    template = CYTOPAST_ANCESTRAL_STATES_CSV_ML if is_ml(method) else CYTOPAST_ANCESTRAL_STATES_CSV_MP
+    return template.format(states='_'.join(col_name2cat(column) for column in columns),
+                           method=method, model=model)
+
+
+def get_named_tree_file(tree):
+    """
+    Get the filename where the PastML tree (input tree but named and with collapsed zero branches) is saved.
+    This file is inside the work_dir that can be specified for the pastml_pipeline method.
+    :param tree: str, the input tree in newick format.
+    :return: str, filename
+    """
+    return CYTOPAST_NAMED_TREE_NWK.format(tree=os.path.basename(tree))
+
+
+def get_pastml_tip_state_file(column):
+    """
+    Get the filename where the PastML input tip states are saved.
+    This file is inside the work_dir that can be specified for the pastml_pipeline method.
+    :param column: str, the column for which ancestral states are reconstructed with PASTML.
+    :return: str, filename
+    """
+    return PASTML_TIP_STATES_CSV.format(state=col_name2cat(column))
+
+
+def get_pastml_marginal_prob_file(method, model, column):
+    """
+    Get the filename where the PastML marginal probabilities of node states are saved (will be None for non-marginal methods).
+    This file is inside the work_dir that can be specified for the pastml_pipeline method.
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :param model: str, the state evolution model used by PASTML.
+    :param column: str, the column for which ancestral states are reconstructed with PASTML.
+    :return: str, filename or None if the method is not marginal.
+    """
+    if not is_marginal(method):
+        return None
+    return PASTML_MARGINAL_PROBS_CSV.format(state=col_name2cat(column), model=model)
 
 
 def _work(args):
-    tree, df, work_dir, column, model, prob_method, params, out_param_file = args
+    tree, df, work_dir, column, model, method, params = args
     logging.info('Processing {}'.format(column))
-    category = col_name2cat(column)
-    res_dir = os.path.abspath(os.path.join(work_dir, category, model, prob_method))
 
     # For binary states make sure that 0 or false is not mistaken by missing data
     if len(df.unique()) == 2 and np.any(pd.isnull(df.unique())):
@@ -36,17 +137,6 @@ def _work(args):
 
     unique_states = [s for s in df.unique() if not pd.isnull(s)]
     logging.info('States are {}'.format(unique_states))
-    tree_name = os.path.splitext(os.path.basename(tree))[0]
-    os.makedirs(res_dir, exist_ok=True)
-
-    res_file = os.path.join(res_dir, STATES_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
-    in_param_file = ''
-    if params:
-        in_param_file = parse_parameters(category, params, res_dir, tree_name, unique_states)
-    if not out_param_file:
-        out_param_file = os.path.join(res_dir, PARAM_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
-    os.makedirs(os.path.dirname(out_param_file), exist_ok=True)
-    state_file = os.path.join(res_dir, 'state_{}.csv'.format(category))
 
     percentage_unknown = df.isnull().sum() / len(df)
     if percentage_unknown > .9:
@@ -59,28 +149,37 @@ def _work(args):
         raise ValueError('The column {} seem to contain non-categorical data: {} of values are unique.'
                          'PASTML cannot infer ancestral states for a tree with too many tip states.'
                          .format(column, int(100 * percentage_unique)))
+
+    in_param_file = None
+    if params:
+        if not is_ml(method):
+            logging.error('You specified some parameters, '
+                          'but the selected method ({}) does not require any, so we\'ll ignore them.'.format(method))
+        in_param_file = parse_parameters(params, unique_states,
+                                         get_pastml_parameter_file(method=method, model=model, column=column,
+                                                                   is_input=True))
+
+    out_param_file = get_pastml_parameter_file(method=method, model=model, column=column)
+    out_mp_file = get_pastml_marginal_prob_file(method=method, model=model, column=column)
+
     # Prepare the state file for PASTML
+    state_file = os.path.join(work_dir, get_pastml_tip_state_file(column=column))
     df.to_csv(state_file, index=True, header=False, encoding='ascii')
 
-    res_tree = os.path.join(res_dir, 'temp.tree.pastml.{tree}.{category}.nwk').format(tree=tree_name, category=category)
+    res_file = os.path.join(work_dir, get_pastml_ancestral_state_file(method=method, model=model, column=column))
 
     hide_warnings = logging.getLogger().getEffectiveLevel() >= logging.ERROR
-    try:
-        pastml.infer_ancestral_states(state_file, os.path.abspath(tree), in_param_file, res_file, res_tree,
-                                      out_param_file, model, prob_method, 1 if hide_warnings else 0)
-    except:
-        logging.error("PASTML could not infer states for {}, so we'll keep the tip states only.".format(category))
-        return column, None
+    pastml.infer_ancestral_states(state_file, os.path.abspath(tree),
+                                  res_file, '',
+                                  method, model, os.path.join(work_dir, out_param_file) if out_param_file else '',
+                                  os.path.join(work_dir, in_param_file) if in_param_file else '',
+                                  os.path.join(work_dir, out_mp_file) if out_mp_file else '',
+                                  1 if hide_warnings else 0)
 
-    # Try to remove a useless tree produced by PASTML
-    try:
-        os.remove(res_tree)
-    except:
-        pass
     return column, res_file
 
 
-def parse_parameters(category, params, res_dir, tree_name, unique_states):
+def parse_parameters(params, unique_states, param_file):
     if isinstance(params, dict):
         param_df = pd.Series(data=list(params.values()), index=params.keys())
         param_df = param_df[np.in1d(param_df.index, unique_states + ['epsilon', 'scaling factor'])]
@@ -124,23 +223,21 @@ def parse_parameters(category, params, res_dir, tree_name, unique_states):
                 logging.error('Scaling factor ({}) is not float, ignoring it.'.format(param_df['scaling factor']))
                 param_df = param_df[np.in1d(param_df.index, ['scaling factor'])]
         if len(param_df):
-            in_param_file = os.path.join(res_dir, PARAM_TAB_PASTML_INPUT).format(tree=tree_name, category=category)
-            param_df.to_csv(in_param_file)
+            param_df.to_csv(param_file)
     elif isinstance(params, str):
         if not os.path.exists(params):
             raise ValueError('You have specified some parameters ({}) but such a file does not exist!'
                              .format(params))
-        in_param_file = params
+        param_file = params
     else:
         raise ValueError('Parameters must be specified either as a dict or as a path to a csv file, not as {}!'
                          .format(type(params)))
-    return in_param_file
+    return param_file
 
 
 def _do_nothing(args):
     tree, df, work_dir, column = args
     logging.info('Processing {}'.format(column))
-    category = col_name2cat(column)
 
     # For binary states make sure that 0 or false is not mistaken by missing data
     if len(df.unique()) == 2 and np.any(pd.isnull(df.unique())):
@@ -153,10 +250,7 @@ def _do_nothing(args):
     states = [s for s in df.unique() if not pd.isnull(s)]
     logging.info('States are {}'.format(states))
 
-    tree_name = os.path.splitext(os.path.basename(tree))[0]
-    res_dir = os.path.abspath(os.path.join(work_dir, category, 'copy'))
-    res_file = os.path.join(res_dir, STATES_TAB_PASTML_OUTPUT).format(tree=tree_name, category=category)
-    os.makedirs(res_dir, exist_ok=True)
+    res_file = os.path.join(work_dir, get_pastml_ancestral_state_file(method='copy', model='copy', column=column))
 
     res_df = pd.DataFrame(index=[str(n.name) for n in read_tree(tree).traverse()], columns=states)
     res_df.fillna(value=0, inplace=True)
@@ -172,7 +266,7 @@ def _do_nothing(args):
 
 def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, res_annotations, sep='\t', model=F81,
                                          copy_columns=None, prediction_method=MARGINAL_APPROXIMATION,
-                                         column2parameters=None, column2out_parameters=None):
+                                         column2parameters=None):
     """
     Creates a table with node states by applying PASTML to infer ancestral states for categories specified in columns,
     and copying the states from copy_columns.
@@ -188,8 +282,6 @@ def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, re
     :param res_annotations: str, path to the file where the output table will be created.
     :param sep: char (optional, by default '\t'), the column separator for the output table.
     By default is set to tab, i.e. for tab file. Set it to ',' for csv.
-    :param column2out_parameters: dict (optional), a dict column: parameter_file,
-    so that PastML writes the calculated parameters into it.
     :return: void
     """
     col2annotation_files = {}
@@ -197,11 +289,8 @@ def get_ancestral_states_for_all_columns(tree, df, tip_df, columns, work_dir, re
         with ThreadPool() as pool:
             col2annotation_files = \
                 dict(pool.map(func=_work, iterable=((tree, tip_df[column], work_dir, column, model, prediction_method,
-                                                     column2parameters[column] \
-                                                         if column2parameters and column in column2parameters else None,
-                                                     column2out_parameters[column] \
-                                                         if column2out_parameters and column in column2out_parameters \
-                                                         else None)
+                                                     column2parameters[column]
+                                                     if column2parameters and column in column2parameters else None)
                                                     for column in columns)))
     if copy_columns is None:
         copy_columns = []
@@ -225,9 +314,10 @@ def quote(str_list):
 
 
 def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, data_sep='\t', id_index=0, columns=None,
-                    name_column=None, column2out_parameters=None, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
+                    name_column=None, tip_size_threshold=REASONABLE_NUMBER_OF_TIPS,
                     model=F81, prediction_method=MARGINAL_APPROXIMATION,
-                    copy_columns=None, verbose=False, date_column=None, column2parameters=None):
+                    copy_columns=None, verbose=False, date_column=None, column2parameters=None,
+                    work_dir=None):
     """
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
 
@@ -249,7 +339,6 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     :param name_column: str (optional), name of the data table column to be used for node names in the visualisation
     (must be one of those specified in columns, if columns are specified). If the data table contains only one column,
     it will be used by default.
-    :param column2out_parameters: dict (optional), a dict column: parameter_file,
     so that PastML writes the calculated parameters into it.
     :param tip_size_threshold: int (optional, by default is 15), remove the tips of size less than threshold-th
     from the compressed map (set to 1e10 to keep all). The larger it is the less tips will be trimmed.
@@ -259,15 +348,21 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     :param verbose: bool, print information on the progress of the analysis.
     :param column2parameters: dict, an optional way to fix some parameters, must be in a form {column: {param: value}},
     where param can be a state (then the value should specify its frequency between 0 and 1),
-    "scaling factor" (then the value should be the scaling factor for three branches,
-    e.g. set to 1 to keep the original branches),
+    "scaling factor" (then the value should be the scaling factor for three branches, e.g. set to 1 to keep the original branches),
     or "epsilon" (the values specifies a min tip branch length to use for smoothing)
+    :param work_dir: str, path to the folder where pastml should put its files (e.g. estimated parameters, etc.),
+    will be created if needed (by default is a temporary folder that gets deleted once the analysis is finished).
     :return: void
     """
     logging.basicConfig(level=logging.INFO if verbose else logging.ERROR,
                         format='%(asctime)s: %(message)s', datefmt="%H:%M:%S", filename=None)
 
-    work_dir = tempfile.mkdtemp()
+    work_dir_is_temp = True
+    if work_dir:
+        work_dir_is_temp = False
+        os.makedirs(work_dir, exist_ok=True)
+    else:
+        work_dir = tempfile.mkdtemp()
 
     if not copy_columns:
         copy_columns = []
@@ -306,12 +401,11 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
         raise ValueError('The name column ({}) should be one of those specified as columns ({}) or copy_columns ({}).'
                          .format(quote([name_column]), quote(columns), quote(copy_columns)))
 
-    tree_name = os.path.basename(tree)
-
     res_annotations = out_data if out_data else \
-        os.path.join(work_dir, 'combined_annotations_{}_{}_{}_{}.tab'
-                     .format('_'.join(columns + copy_columns), model, prediction_method, tree_name))
-    new_tree = os.path.join(work_dir, tree_name + '.pastml.nwk')
+        os.path.join(work_dir, get_combined_ancestral_state_file(method=prediction_method, model=model,
+                                                                 columns=columns + copy_columns))
+    new_tree = os.path.join(work_dir, get_named_tree_file(tree))
+
     root = read_tree(tree)
     name_tree(root)
     collapse_zero_branches(root)
@@ -331,8 +425,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
                                          columns=columns, work_dir=work_dir,
                                          res_annotations=res_annotations,
                                          sep=data_sep, model=model, copy_columns=copy_columns,
-                                         prediction_method=prediction_method, column2parameters=column2parameters,
-                                         column2out_parameters=column2out_parameters)
+                                         prediction_method=prediction_method, column2parameters=column2parameters)
 
     if html or html_compressed:
         if date_column:
@@ -343,8 +436,8 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
         root = _past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
                          columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
                          tip_size_threshold=tip_size_threshold, min_date=min_date, max_date=max_date)
-
-    shutil.rmtree(work_dir)
+    if work_dir_is_temp:
+        shutil.rmtree(work_dir)
     return root
 
 
@@ -456,8 +549,6 @@ def main():
                                    '"scaling factor" (then the value should be the scaling factor for three branches, '
                                    'e.g. set to 1 to keep the original branches), '
                                    'or "epsilon" (the values specifies a min tip branch length to use for smoothing)')
-    pastml_group.add_argument('--column2out_parameters', required=False, default=None, type=dict,
-                              help="(optional) a dict column: parameter_file, so that PastML writes the calculated parameters into it.")
 
     vis_group = parser.add_argument_group('visualisation-related arguments')
     vis_group.add_argument('-n', '--name_column', type=str, default=None,
@@ -472,6 +563,10 @@ def main():
     out_group = parser.add_argument_group('output-related arguments')
     out_group.add_argument('-o', '--out_data', required=False, type=str,
                            help="the output annotation file with the states inferred by PASTML.")
+    pastml_group.add_argument('--work_dir', required=False, default=None, type=dict,
+                              help="(optional) str: path to the folder where pastml should put its files "
+                                   "(e.g. estimated parameters, etc.), will be created if needed "
+                                   "(by default is a temporary folder that gets deleted once the analysis is finished).")
     out_group.add_argument('-p', '--html_compressed', required=False, default=None, type=str,
                            help="the output summary map visualisation file (html).")
     out_group.add_argument('-l', '--html', required=False, default=None, type=str,
