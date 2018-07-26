@@ -88,8 +88,8 @@ def get_scaling_function(y_m, y_M, x_m, x_M):
     return lambda _: int(k * _ + b)
 
 
-def set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling, transform_size,
-                      transform_e_size, state, suffix=''):
+def set_cyto_features_compressed(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling, transform_size,
+                                 transform_e_size, state, suffix=''):
     min_n_tips = min(sum_len_values(_) for _ in tips_inside) if tips_inside else 0
     max_n_tips = max(sum_len_values(_) for _ in tips_inside) if tips_inside else 0
 
@@ -110,7 +110,6 @@ def set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, 
     n.add_feature('{}{}'.format(NODE_SIZE, suffix), 20 if max_n_tips == 0 else size_scaling(transform_size(max_n_tips)))
     n.add_feature('{}{}'.format(FONT_SIZE, suffix), 12 if max_n_tips == 0 else font_scaling(transform_size(max_n_tips)))
 
-    # If it is a compressed tree, set horizontal size as label
     if max_n_tips > 0 or max_n_tips_below > 0:
         n.add_feature('node_{}{}'.format(TIPS_INSIDE, suffix), tips_inside_str)
         n.add_feature('node_{}{}'.format(TIPS_BELOW, suffix), tips_below_str)
@@ -121,43 +120,58 @@ def set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, 
             n.add_feature('node_meta{}'.format(suffix), 'True')
         n.add_feature('{}{}'.format(EDGE_NAME, suffix), str(edge_size) if edge_size != 1 else '')
         n.add_feature('{}{}'.format(EDGE_SIZE, suffix), e_size_scaling(transform_e_size(edge_size)))
-    # else set dist as label
-    else:
-        n.add_feature('{}{}'.format(EDGE_NAME, suffix), '%g' % round(n.dist, 2))
-        n.add_feature('{}{}'.format(EDGE_SIZE, suffix), e_size_scaling(transform_e_size(1)))
 
 
-def _tree2json(tree, categories, add_fake_nodes, name_feature, node2tooltip, min_date=0, max_date=0):
+def set_cyto_features_tree(n, state, suffix=''):
+    n.add_feature('node_root_id', n.name)
+    n.add_feature('{}{}'.format(NODE_NAME, suffix), state)
+    n.add_feature('{}{}'.format(NODE_SIZE, suffix), 200 if n.is_leaf() else 150)
+    n.add_feature('{}{}'.format(FONT_SIZE, suffix), 40 if n.is_leaf() else 30)
+    n.add_feature('{}{}'.format(EDGE_NAME, suffix), '%g' % round(n.dist, 2))
+    n.add_feature('{}{}'.format(EDGE_SIZE, suffix), 20)
+
+
+def _tree2json(tree, categories, name_feature, node2tooltip, min_date=0, max_date=0, is_compressed=True):
     e_size_scaling, font_scaling, size_scaling, transform_e_size, transform_size = get_size_transformations(tree)
 
     for n in tree.traverse():
         state = getattr(n, name_feature, '') if name_feature is not None else ''
 
-        tips_inside, tips_below = getattr(n, TIPS_INSIDE, []), getattr(n, TIPS_BELOW, [])
-        if isinstance(tips_inside, dict):
-            tips_inside = [tips_inside]
-        if isinstance(tips_below, dict):
-            tips_below = [tips_below]
+        if is_compressed:
+            tips_inside, tips_below = getattr(n, TIPS_INSIDE, []), getattr(n, TIPS_BELOW, [])
+            if isinstance(tips_inside, dict):
+                tips_inside = [tips_inside]
+            if isinstance(tips_below, dict):
+                tips_below = [tips_below]
 
-        set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling, transform_size,
-                          transform_e_size, state, suffix='')
+            set_cyto_features_compressed(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling, transform_size,
+                                         transform_e_size, state, suffix='')
 
-        if min_date != max_date:
-            for year in range(int(max_date), int(min_date) - 1, -1):
-                tips_inside = [e for e in
-                               ({k: _ for (k, _) in year2tips.items() if k <= year} for year2tips in tips_inside)
-                               if e]
-                tips_below = [e for e in
-                              ({k: _ for (k, _) in year2tips.items() if k <= year} for year2tips in tips_below)
-                              if e]
-                set_cyto_features(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling,
-                                  transform_size,
-                                  transform_e_size, state, suffix='_{}'.format(year))
+            if min_date != max_date:
+                for year in range(int(max_date), int(min_date) - 1, -1):
+                    suffix = '_{}'.format(year)
+                    tips_inside = [e for e in
+                                   ({k: _ for (k, _) in year2tips.items() if k <= year} for year2tips in
+                                    tips_inside)
+                                   if e]
+                    tips_below = [e for e in
+                                  ({k: _ for (k, _) in year2tips.items() if k <= year} for year2tips in tips_below)
+                                  if e]
+                    set_cyto_features_compressed(n, tips_inside, tips_below, size_scaling, e_size_scaling, font_scaling,
+                                                 transform_size,
+                                                 transform_e_size, state, suffix=suffix)
+        else:
+            set_cyto_features_tree(n, state, suffix='')
+
+            if min_date != max_date:
+                for year in range(int(max_date), int(min_date) - 1, -1):
+                    suffix = '_{}'.format(year)
+                    set_cyto_features_tree(n, state, suffix=suffix)
 
     clazzes = set()
     nodes, edges = [], []
 
-    dist_step = np.mean([n.dist for n in tree.traverse()]) / 3
+    dist_step = np.median([n.dist for n in tree.traverse()]) / 3
 
     todo = Queue()
     todo.put_nowait(tree)
@@ -175,7 +189,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, node2tooltip, min
             todo.put_nowait(c)
 
     for n, n_id in sorted(node2id.items(), key=lambda ni: ni[1]):
-        if n == tree and add_fake_nodes and int(n.dist / dist_step) > 0:
+        if n == tree and not is_compressed and int(n.dist / dist_step) > 0:
             fake_id = 'fake_node_{}'.format(n_id)
             nodes.append(get_fake_node(n, fake_id))
             edges.append(get_edge(n, fake_id, n_id, minLen=int(n.dist / dist_step)))
@@ -188,7 +202,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, node2tooltip, min
         for child in sorted(n.children, key=lambda _: node2id[_]):
             edge_attributes = {COLOR: (SPECIAL_EDGE_COLOR if getattr(child, METACHILD, False) else DEFAULT_EDGE_COLOR)}
             source_name = n_id
-            if add_fake_nodes:
+            if not is_compressed and (int(child.dist / dist_step) > 0 or child.is_leaf()):
                 target_name = 'fake_node_{}'.format(node2id[child])
                 nodes.append(get_fake_node(child, target_name))
                 fake_edge_attributes = {k: '' for k in child.features if k.startswith(EDGE_NAME)}
@@ -197,7 +211,7 @@ def _tree2json(tree, categories, add_fake_nodes, name_feature, node2tooltip, min
                 fake_edge_attributes['minLen'] = 0
                 edges.append(get_edge(child, source_name, target_name, **fake_edge_attributes))
                 source_name = target_name
-            edge_attributes['minLen'] = int(child.dist / dist_step) if add_fake_nodes else 1
+            edge_attributes['minLen'] = 1 if is_compressed else int(child.dist / dist_step)
             edges.append(get_edge(child, source_name, node2id[child], **edge_attributes))
 
     json_dict = {NODES: nodes, EDGES: edges}
@@ -228,7 +242,7 @@ def get_size_transformations(tree):
 
 
 def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feature=STATE,
-                           name2colour=None, add_fake_nodes=True, n2tooltip=None, min_date=0, max_date=0):
+                           name2colour=None, n2tooltip=None, min_date=0, max_date=0, is_compressed=True):
     """
     Converts a tree to an html representation using Cytoscape.js.
 
@@ -244,8 +258,7 @@ def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feat
     :param name_feature: str, a node feature whose value will be used as a label
     returns a key to be used for sorting nodes on the same level in the tree.
     :param n2tooltip: dict, TreeNode to str mapping tree nodes to tooltips.
-    :param add_fake_nodes: bool, if to add fake nodes, needed for showing branch lengths. 
-    :param layout: str, name of the layout for Cytoscape.js 
+    :param layout: str, name of the layout for Cytoscape.js
     :param name2colour: dict, str to str, category name to HEX colour mapping 
     :param categories: a list of categories for the pie-charts inside the nodes
     :param tree: ete3.Tree
@@ -254,8 +267,8 @@ def save_as_cytoscape_html(tree, out_html, categories, layout='dagre', name_feat
     graph_name = os.path.splitext(os.path.basename(out_html))[0]
 
     json_dict, clazzes \
-        = _tree2json(tree, categories=categories, add_fake_nodes=add_fake_nodes, name_feature=name_feature,
-                     node2tooltip=n2tooltip, min_date=min_date, max_date=max_date)
+        = _tree2json(tree, categories=categories, name_feature=name_feature,
+                     node2tooltip=n2tooltip, min_date=min_date, max_date=max_date, is_compressed=is_compressed)
     env = Environment(loader=PackageLoader('cytopast'))
     template = env.get_template('pie_tree.js')
 

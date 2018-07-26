@@ -430,9 +430,9 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     if html or html_compressed:
         if date_column:
             min_date, max_date = date_tips(root, df[date_column])
+            logging.info("Dates vary between {} and {}.".format(min_date, max_date))
         else:
             min_date, max_date = 0, 0
-        logging.info("Dates vary between {} and {}.".format(min_date, max_date))
         root = _past_vis(root, res_annotations, html_compressed, html, data_sep=data_sep,
                          columns=(columns + copy_columns) if copy_columns else columns, name_column=name_column,
                          tip_size_threshold=tip_size_threshold, min_date=min_date, max_date=max_date)
@@ -491,14 +491,13 @@ def _past_vis(tree, res_annotations, html_compressed=None, html=None, data_sep='
     if html:
         save_as_cytoscape_html(tree, html, categories=categories, name2colour=name2colour,
                                n2tooltip={n: get_category_str(n) for n in tree.traverse()},
-                               name_feature='name', min_date=min_date, max_date=max_date)
+                               name_feature='name', min_date=min_date, max_date=max_date, is_compressed=False)
 
     if html_compressed:
         tree = compress_tree(tree, categories=categories, tip_size_threshold=tip_size_threshold)
         save_as_cytoscape_html(tree, html_compressed, categories=categories,
-                               name2colour=name2colour, add_fake_nodes=False,
-                               n2tooltip={n: get_category_str(n) for n in tree.traverse()},
-                               min_date=min_date, max_date=max_date, name_feature=name_column)
+                               name2colour=name2colour, n2tooltip={n: get_category_str(n) for n in tree.traverse()},
+                               min_date=min_date, max_date=max_date, name_feature=name_column, is_compressed=True)
     return tree
 
 
