@@ -5,7 +5,7 @@ import os
 
 configfile: "config.yaml"
 localrules: all, tnt
-ruleorder: pastml_drm > pastml_drm_loc > raxml > phyml > fasttree > best_tree
+ruleorder: pastml_drm_loc_subtree > timed_pastml_drm > pastml_drm_loc > pastml_loc > pastml_drm > raxml > phyml > fasttree > best_tree
 
 src_command = config['src']
 py_config = config['py_config']
