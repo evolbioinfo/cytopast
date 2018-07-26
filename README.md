@@ -62,9 +62,18 @@ docker run -t evolbioinfo/pastml -h
 
 ## Run in python3
 
+### Windows
+For **Windows** users, we recommend installing cytopast via [Cygwin environment](https://www.cygwin.com/).
+First instal gcc, gsl, python3 and pip3 from the Cygwin packages. Then in the terminal and install cytopast:
+```bash
+pip3 install cytopast
+```
+
+### All other platforms
+
 We strongly recommend installing cytopast for python via [conda](https://conda.io/docs/), following the procedure described below:
 
-### Installing with conda
+#### Installing with conda
 
 Once you have conda installed create an environment for cytopast with python3, gcc and gsl:
 
@@ -83,7 +92,7 @@ Then install cytopast in it:
 pip install cytopast
 ```
 
-### Installing without conda
+#### Installing without conda
 
 Install [GNU GSL](https://www.gnu.org/software/gsl/), following the instructions provided on GSL website.
 

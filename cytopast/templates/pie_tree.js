@@ -145,6 +145,11 @@ function toImage(){
     document.getElementById("downloader").href = cy.jpg({ full: false, quality: 1.0, scale: 2}).replace(/^data:image\/[^;]/, 'data:application/octet-stream');
 }
 
+//function toJson(){
+//    console.log(cy.json().elements);
+//    document.getElementById("downloader-json").href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cy.json().elements));
+//}
+
 function fit() {
     cy.fit();
 }
