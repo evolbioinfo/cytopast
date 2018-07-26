@@ -3,7 +3,7 @@
 __cytopast__ is a python3 module that creates zoomable HTML visualisation of phylogenetic trees with annotated nodes.
 
 Given a tree and its node annotations, it can either visualise them as-is, 
-or apply [PASTML](https://github.com/saishikawa/PASTML) to infer ancestral states based on the tip states. 
+or apply [PastML](https://github.com/saishikawa/PASTML) to infer ancestral states based on the tip states. 
 
 The states are visualised as different colours of the tree nodes using [Cytoscape.js](http://js.cytoscape.org/)
 
