@@ -3,7 +3,7 @@
 __cytopast__ is a python3 module that creates zoomable HTML visualisation of phylogenetic trees with annotated nodes.
 
 Given a tree and its node annotations, it can either visualise them as-is, 
-or apply [PASTML](https://github.com/saishikawa/PASTML) to infer ancestral states based on the tip states. 
+or apply [PastML](https://github.com/saishikawa/PASTML) to infer ancestral states based on the tip states. 
 
 The states are visualised as different colours of the tree nodes using [Cytoscape.js](http://js.cytoscape.org/)
 
@@ -33,11 +33,13 @@ Try it at [pastml.pasteur.fr](https://pastml.pasteur.fr)
 
 # Run it on your computer
 
-There are 2 alternative ways to run cytopast on your computer: with [docker](https://hub.docker.com/), or in python3.
+There are 2 alternative ways to run cytopast on your computer: with [docker](https://www.docker.com/community-edition), or in python3.
 
 ## Run with docker
 
 ### Basic usage
+Once [docker](https://www.docker.com/community-edition) is installed, run the following command:
+
 ```bash
 docker run -v <path_to_the_folder_containing_the_tree_and_the_annotations>:/data:rw -t evolbioinfo/pastml --tree /data/<tree_file> --data /data/<annotation_file> --columns <one_or_more_column_names> --html_compressed /data/<map_name>
 ```
@@ -64,7 +66,7 @@ docker run -t evolbioinfo/pastml -h
 
 ### Windows
 For **Windows** users, we recommend installing cytopast via [Cygwin environment](https://www.cygwin.com/).
-First instal gcc, gsl, python3 and pip3 from the Cygwin packages. Then in the terminal and install cytopast:
+First instal gcc, gsl, python3 and pip3 from the Cygwin packages. Then install cytopast:
 ```bash
 pip3 install cytopast
 ```
