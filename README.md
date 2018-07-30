@@ -7,6 +7,10 @@ or apply [PastML](https://github.com/saishikawa/PASTML) to infer ancestral state
 
 The states are visualised as different colours of the tree nodes using [Cytoscape.js](http://js.cytoscape.org/)
 
+# Article
+
+For a detailed description of PastML/cytopast: see Ishikawa SA, Zhukova A, Iwasaki W, Gascuel O (2018) __A Fast Likelihood Method to Reconstruct and Visualize Ancestral Scenarios__ [[bioRxiv]](https://doi.org/10.1101/379529).
+
 # Input data
 As an input, one needs to provide a **rooted** phylogenetical tree in [newick](https://en.wikipedia.org/wiki/Newick_format) format,
 and a table containing tip states, 
