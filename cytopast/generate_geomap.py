@@ -1,16 +1,18 @@
 import os
+from html import escape
 
 import numpy as np
 import pandas as pd
 from jinja2 import Environment, PackageLoader
 
-from cytopast.colour_generator import get_enough_colours
 from cytopast import read_tree
+from cytopast.colour_generator import get_enough_colours
 from cytopast.pastml_analyser import quote
 
 ISO_EXISTS = False
 try:
     from hdx.location.country import Country
+
     ISO_EXISTS = True
 except ImportError:
     pass
@@ -66,11 +68,12 @@ def generate_map(data, country, location, tree, html, data_sep='\t', id_index=0)
         country2iso = {_: Country.get_iso2_from_iso3(iso) for (_, iso) in
                        ((_, Country.get_iso3_country_code_fuzzy(_)[0]) for _ in country2location.keys()) if iso}
     else:
-        country2iso = {_: _ for _ in country2location.keys()}
+        country2iso = {_: escape(_) for _ in country2location.keys()}
     iso2num = {iso: len(df[df[country] == c]) for c, iso in country2iso.items()}
     iso2loc = {iso: country2location[c] for c, iso in country2iso.items()}
     iso2loc_num = {iso: len(df[df[location] == loc]) for iso, loc in iso2loc.items()}
-    iso2tooltip = {iso: '{}: {} samples (out of {} in {})'.format(c, iso2num[iso], iso2loc_num[iso], iso2loc[iso])
+    iso2tooltip = {iso: escape('{}: {} samples (out of {} in {})'
+                               .format(c, iso2num[iso], iso2loc_num[iso], iso2loc[iso]))
                    for (c, iso) in country2iso.items()}
     locations = sorted([_ for _ in df[location].unique() if not pd.isnull(_)])
     colours = get_enough_colours(len(locations))
