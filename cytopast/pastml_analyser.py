@@ -378,6 +378,8 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     if date_column:
         if df[date_column].dtype == float:
             df[date_column] = pd.to_datetime(df[date_column], format='%Y.0')
+        elif df[date_column].dtype == int:
+            df[date_column] = pd.to_datetime(df[date_column], format='%Y')
         else:
             df[date_column] = pd.to_datetime(df[date_column], infer_datetime_format=True)
 
