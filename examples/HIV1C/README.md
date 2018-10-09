@@ -46,7 +46,7 @@ and average quartet distance = 0.31 (calculated with tqDist library [[Sand *et a
 where 0.0 means identical trees, and 1.0 trees that have no bipartition / no quartet in common. 
 
 ### 4. Ancestral character reconstruction (ACR)
-We reconstructed ACR for Location and 5 most prevalend SDRMs using PastML/cytopast.
+We reconstructed ACR for Location and 10 most prevalend SDRMs using PastML/cytopast.
 
 ### 5. Robustness of ACR
 

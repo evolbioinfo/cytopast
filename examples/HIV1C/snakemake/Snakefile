@@ -37,7 +37,7 @@ r=5
 s=250
 
 # SDRMs to be analysed
-DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R', 'RT:Y181C']
+DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R', 'RT:Y181C', 'RT:K219Q', 'PR:L90M', 'RT:T215Y', 'RT:G190A', 'RT:M41L']
 
 # choose one or more of the tree types below
 tree_types = ['phyml', 'fast', 'raxml']
