@@ -17,20 +17,22 @@ and a table containing tip states,
 in tab-delimited (by default) or csv format (to be specified with *--data_sep ,* option).
 
 ### Example
+You can download [HIV1-A in Albania data](examples/Albania/data) as an example.
 Let's assume that the tree and annotation files are in the Downloads folder, 
-and are named respectively tree.nwk and states.csv.
+and are named respectively Albanian.tree.152tax.tre	and data.txt.
 
-The states.csv is a comma-separated file, containing tip ids in the first column, 
-and several named columns, including *Location*, i.e.:
+The data.txt is a comma-separated file, containing tip ids in the first column, 
+and Country in the second column, i.e.:
 
-
-Tip_id | ... | Location | ...
------ |  ----- | ----- | -----
-1 | ... | Africa | ...
-2 | ... | Asia | ...
-3 | ... | Africa | ...
-... | ... | ... | ...
-
+id | Country
+----- |  -----
+98CMAJ6932 | Africa
+98CMAJ6933 | Africa
+96CMAJ6134 | Africa
+00SEAY5240 | WestEurope
+... | ...
+02GRAY0303 | Greece
+97YUAF9960 | EastEurope
 
 # Try it online
 Try it at [pastml.pasteur.fr](https://pastml.pasteur.fr)
@@ -45,17 +47,17 @@ There are 2 alternative ways to run cytopast on your computer: with [docker](htt
 Once [docker](https://www.docker.com/community-edition) is installed, run the following command:
 
 ```bash
-docker run -v <path_to_the_folder_containing_the_tree_and_the_annotations>:/data:rw -t evolbioinfo/pastml --tree /data/<tree_file> --data /data/<annotation_file> --columns <one_or_more_column_names> --html_compressed /data/<map_name>
+docker run -v <path_to_the_folder_containing_the_tree_and_the_annotations>:/data:rw -t evolbioinfo/pastml --tree /data/<tree_file> --data /data/<annotation_file> --data_sep <separator_eg_comma> --columns <one_or_more_column_names> --html_compressed /data/<map_name>
 ```
 
-For example, to reconstruct and visualise the ancestral Location states, 
+For example, to reconstruct and visualise the ancestral Country states for Albanian data, 
 one needs to run the following command:
 
 ```bash
-docker run -v ~/Downloads:/data:rw -t evolbioinfo/pastml --tree /data/tree.nwk --data /data/states.csv --data_sep , --columns Location --html_compressed /data/location_map.html
+docker run -v ~/Downloads:/data:rw -t evolbioinfo/pastml --tree /data/Albanian.tree.152tax.tre --data /data/data.txt --data_sep , --columns Country --html_compressed /data/Albanian_map.html 
 ```
 
-This will produce a file location_map.html in the Downloads folder, 
+This will produce a file Albanian_map.html in the Downloads folder, 
 that can be viewed with a browser.
 
 
@@ -118,8 +120,18 @@ source activate cytopast
 To run cytopast:
 
 ```bash
-cytopast --tree <path/to/tree_file.nwk> --data <path/to/annotation_file.tab> --columns <one_or_more_column_names> --html_compressed <path/to/output/map.html>
+cytopast --tree <path/to/tree_file.nwk> --data <path/to/annotation_file.tab> --columns <one_or_more_column_names> --html_compressed <path/to/output/map.html> --data_sep <separator_eg_comma>
 ```
+
+For example, to reconstruct and visualise the ancestral Country states for Albanian data, 
+one needs to run the following command:
+
+```bash
+cytopast --tree ~/Downloads/Albanian.tree.152tax.tre --data ~/Downloads/data.txt --data_sep , --columns Country --html_compressed ~/Downloads/Albanian_map.html 
+```
+
+This will produce a file Albanian_map.html in the Downloads folder, 
+that can be viewed with a browser.
 
 ### Help
 
@@ -133,22 +145,23 @@ cytopast -h
 from cytopast.pastml_analyser import pastml_pipeline
 
 # Path to the table containing tip/node annotations, in csv or tab format
-data = "/path/to/the/table/eg/data.csv"
+data = "~/Downloads/data.txt"
 
 # Path to the tree in newick format
-tree = "/path/to/the/tree/eg/tree.nwk"
+tree = "~/Downloads/Albanian.tree.152tax.tre"
 
 # Columns present in the annotation table,
 # for which we want to reconstruct ancestral states
-columns = ['Location', 'Resistant_or_not']
+# (for Albanian data we only have one column, but multiple columns are also allowed)
+columns = ['Country']
 
 # Path to the output compressed map visualisation
-html_compressed = "/path/to/the/future/map/eg/map.html"
+html_compressed = "~/Downloads/Albanian_map.html"
 
-# Path to the output tree visualisation
-html = "/path/to/the/future/tree/visualisation/eg/tree.html"
+# (Optional) path to the output tree visualisation
+html = "~/Downloads/Albanian_tree.html"
 
-pastml_pipeline(data=data, data_sep=',', columns=columns, name_column='Location',
+pastml_pipeline(data=data, data_sep=',', columns=columns, name_column='Country',
                 tree=tree,
                 html_compressed=html_compressed, html=html, 
                 verbose=True)
