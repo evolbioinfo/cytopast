@@ -564,7 +564,7 @@ def main():
     out_group = parser.add_argument_group('output-related arguments')
     out_group.add_argument('-o', '--out_data', required=False, type=str,
                            help="the output annotation file with the states inferred by PASTML.")
-    pastml_group.add_argument('--work_dir', required=False, default=None, type=dict,
+    pastml_group.add_argument('--work_dir', required=False, default=None, type=str,
                               help="(optional) str: path to the folder where pastml should put its files "
                                    "(e.g. estimated parameters, etc.), will be created if needed "
                                    "(by default is a temporary folder that gets deleted once the analysis is finished).")
