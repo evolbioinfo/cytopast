@@ -37,7 +37,7 @@ r=5
 s=250
 
 # SDRMs to be analysed
-DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R', 'RT:Y181C', 'RT:K219Q', 'PR:L90M', 'RT:T215Y', 'RT:G190A', 'RT:M41L']
+DRMS = ['RT:M184V', 'RT:K103N', 'RT:D67N', 'RT:K70R', 'RT:Y181C']
 
 # choose one or more of the tree types below
 tree_types = ['phyml', 'fast', 'raxml']
@@ -64,14 +64,14 @@ rule all:
 
         loc_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', \
         'map_{n}.tree_{type}.model_{model}.location_{loc}.threshold_{t}.tree.html'), \
-        n=list(range(n)) + ['best'], type=tree_types, model='F81', loc=location_col, t=[5, 6, 10]),
+        n=list(range(n)) + ['best'], type=tree_types, model='F81', loc=location_col, t=[5, 6, 10, 20]),
 
         sampled_loc_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'Loc_{loc}', 'threshold_{t}', \
         'map_best.tree_{type}.model_{model}.location_{loc}.threshold_{t}.tree.sampled_{s}.state_{loc}.rep_{r}.html'), \
         type=tree_types, model=model, loc=location_col, r=range(r), s=s, t=5),
 
-        drm_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'pastml_{type}_best_{model}_tree.html'), \
-        type=tree_types, DRM=DRMS, model=model),
+        drm_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'pastml_{type}_{n}_{model}_tree.html'), \
+        type=tree_types, DRM=DRMS, model=model, n=list(range(n)) + ['best']),
 
         drm_loc_maps = expand(os.path.join(data_dir, maps_dir, '{type}', 'DRM_{DRM}', 'Loc_{loc}', \
         'pastml_{type}_best_{model}_tree.html'), type=tree_types, DRM=DRMS, model=model, loc=location_col),
@@ -609,7 +609,7 @@ rule timed_pastml_drm:
             {py_config}
             python3 {folder}/py/acr.py --trees {input.tree} --metadata {input.data} \
             --htmls {output.map} --col {params.drm} --model {params.model} --date_col {params.date_col} \
-            --in_pars {input.pars} --threshold 12
+            --in_pars {input.pars}
         """)
 
 rule pastml_drm:
@@ -629,14 +629,15 @@ rule pastml_drm:
         name = 'p_{n}_{DRM}',
         model = '{model}',
         date_col = 'Year',
-        drm = '{DRM}'
+        drm = '{DRM}',
+        work_dir = os.path.join(data_dir, 'pastml', 'drm_{DRM}', 'tree_{type}_{n}')
     run:
         shell("""
             {src_command}
             {py_config}
             python3 {folder}/py/acr.py --trees {input.tree} --metadata {input.data} \
             --htmls {output.map} --col {params.drm} --model {params.model} --date_col {params.date_col} \
-            --out_pars {output.pars}
+            --out_pars {output.pars} --work_dir {params.work_dir}
         """)
 
 rule pastml_drm_loc:
