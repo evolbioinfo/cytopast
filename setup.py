@@ -16,7 +16,7 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    version='1.0.8',
+    version='1.0.9',
     description='Visualisation of PastML trees.',
     author='Anna Zhukova',
     author_email='anna.zhukova@pasteur.fr',
