@@ -22,8 +22,10 @@ CYTOPAST_NAMED_TREE_NWK = 'named.tree_{tree}'
 PASTML_ANCESTRAL_STATES_CSV_ML = 'ancestral_states.state_{state}.method_{method}.model_{model}.csv'
 PASTML_ANCESTRAL_STATES_CSV_MP = 'ancestral_states.state_{state}.method_{method}.csv'
 PASTML_TIP_STATES_CSV = 'input_tip_states.state_{state}.csv'
-PASTML_PARAMS_CSV = 'params.state_{state}.method_{method}.model_{model}.csv'
+PASTML_ML_PARAMS_CSV = 'params.state_{state}.method_{method}.model_{model}.csv'
+PASTML_MP_PARAMS_CSV = 'params.state_{state}.method_{method}.csv'
 PASTML_MARGINAL_PROBS_CSV = 'marginal_probabilities.state_{state}.model_{model}.csv'
+PASTML_PARAMS_CSV_INPUT = 'input_params.state_{state}.method_{method}.model_{model}.csv'
 PASTML_PARAMS_CSV_INPUT = 'input_params.state_{state}.method_{method}.model_{model}.csv'
 
 
@@ -48,7 +50,8 @@ def is_ml(method):
 
 def get_pastml_parameter_file(method, model, column, is_input=False):
     """
-    Get the filename where the PastML parameters are saved (for non-ML methods will be None, as they have no parameters).
+    Get the filename where the PastML parameters are saved
+    (for non-ML methods and input parameters will be None, as they have no parameters).
     This file is inside the work_dir that can be specified for the pastml_pipeline method.
     :param method: str, the ancestral state prediction method used by PASTML.
     :param model: str, the state evolution model used by PASTML.
@@ -56,9 +59,10 @@ def get_pastml_parameter_file(method, model, column, is_input=False):
     :param is_input: bool, whether this is an input or an output file for PASTML.
     :return: str, filename or None for non-ML methods
     """
-    if not is_ml(method):
+    ml = is_ml(method)
+    if not ml and is_input:
         return None
-    template = PASTML_PARAMS_CSV_INPUT if is_input else PASTML_PARAMS_CSV
+    template = PASTML_PARAMS_CSV_INPUT if is_input else (PASTML_ML_PARAMS_CSV if ml else PASTML_MP_PARAMS_CSV)
     return template.format(state=col_name2cat(column), method=method, model=model)
 
 
@@ -171,7 +175,8 @@ def _work(args):
     hide_warnings = logging.getLogger().getEffectiveLevel() >= logging.ERROR
     pastml.infer_ancestral_states(state_file, os.path.abspath(tree),
                                   res_file, '',
-                                  method, model, os.path.join(work_dir, out_param_file) if out_param_file else '',
+                                  method, os.path.join(work_dir, out_param_file),
+                                  model,
                                   os.path.join(work_dir, in_param_file) if in_param_file else '',
                                   os.path.join(work_dir, out_mp_file) if out_mp_file else '',
                                   1 if hide_warnings else 0)
