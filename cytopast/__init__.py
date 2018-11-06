@@ -225,11 +225,11 @@ def compress_tree(tree, categories, can_merge_diff_sizes=True, tip_size_threshol
         n.add_feature(TIPS_INSIDE, defaultdict(list))
         n.add_feature(TIPS_BELOW, defaultdict(list))
         if n.is_leaf():
-            getattr(n, TIPS_INSIDE)[getattr(n, DATE)].append(n.name)
-            getattr(n, TIPS_BELOW)[getattr(n, DATE)].append(n.name)
+            getattr(n, TIPS_INSIDE)[getattr(n, DATE, 0)].append(n.name)
+            getattr(n, TIPS_BELOW)[getattr(n, DATE, 0)].append(n.name)
         else:
             for _ in n:
-                getattr(n, TIPS_BELOW)[getattr(_, DATE)].append(_.name)
+                getattr(n, TIPS_BELOW)[getattr(_, DATE, 0)].append(_.name)
 
     collapse_vertically(tree, lambda _: get_states(_, categories))
     remove_mediators(tree, lambda _: get_states(_, categories))
@@ -307,7 +307,7 @@ def collapse_hor(tree, get_states, tips2bin):
             child.add_feature(TIPS_BELOW, tips_below)
             child.add_feature(NUM_TIPS_INSIDE, sum(sum_len_values(_) for _ in getattr(child, TIPS_INSIDE))
                               / len(getattr(child, TIPS_INSIDE)))
-            child.add_feature(DATE, min(getattr(_, DATE) for _ in children))
+            child.add_feature(DATE, min(getattr(_, DATE, 0) for _ in children))
             if child in config_cache:
                 config_cache[child] = (len(getattr(child, TIPS_INSIDE)), config_cache[child][1])
 
