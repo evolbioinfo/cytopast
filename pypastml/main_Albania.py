@@ -4,8 +4,7 @@ import os
 import pandas as pd
 
 from cytopast import read_tree
-from pypastml import reconstruct_ancestral_states
-
+from pypastml import acr
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'examples', 'Albania', 'data')
 TREE_NWK = os.path.join(DATA_DIR, 'Albanian.tree.152tax.tre')
@@ -20,10 +19,4 @@ if __name__ == '__main__':
     df = pd.read_csv(STATES_INPUT, index_col=0, header=0)
     column = 'Country'
 
-    for _ in tree:
-        if _.name in df.index:
-            value = df.loc[_.name, column]
-            if not pd.isna(value):
-                _.add_feature(column, value)
-    reconstruct_ancestral_states(tree, column, [_ for _ in df[column].unique() if not pd.isnull(_)],
-                                 html=HTML, html_compressed=MAP)
+    acr(tree, df[[column]], html=HTML, html_compressed=MAP)
