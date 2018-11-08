@@ -26,7 +26,6 @@ PASTML_ML_PARAMS_CSV = 'params.state_{state}.method_{method}.model_{model}.csv'
 PASTML_MP_PARAMS_CSV = 'params.state_{state}.method_{method}.csv'
 PASTML_MARGINAL_PROBS_CSV = 'marginal_probabilities.state_{state}.model_{model}.csv'
 PASTML_PARAMS_CSV_INPUT = 'input_params.state_{state}.method_{method}.model_{model}.csv'
-PASTML_PARAMS_CSV_INPUT = 'input_params.state_{state}.method_{method}.model_{model}.csv'
 
 
 def is_marginal(method):

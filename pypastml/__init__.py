@@ -15,7 +15,41 @@ TD_LH = 'TOP_DOWN_LIKELIHOOD'
 LH = 'LIKELIHOOD'
 LH_SF = 'LIKELIHOOD_SF'
 BU_LH_SF = 'BOTTOM_UP_LIKELIHOOD_SF'
+BU_LH_JOINT_STATES = 'BOTTOM_UP_LIKELIHOOD_JOINT_STATES'
 TD_LH_SF = 'TOP_DOWM_LIKELIHOOD_SF'
+
+
+JOINT = 'joint'
+MPPA = 'MPPA'
+MAP = 'MAP'
+
+JC = 'JC'
+F81 = 'F81'
+EFT = 'EFT'
+
+DOWNPASS = 'downpass'
+ACCTRAN = 'AccTran'
+DELTRAN = 'DelTran'
+
+
+def is_marginal(method):
+    """
+    Checks if the method is marginal, i.e. is either marginal itself, or MAP, or MPPA.
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :return: bool
+    """
+    return method in {MPPA, MAP}
+
+
+def is_ml(method):
+    """
+    Checks if the method is max likelihood, i.e. is either joint or one of the marginal ones
+    (marginal itself, or MAP, or MPPA).
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :return: bool
+    """
+    return method == JOINT or is_marginal(method)
+
 
 MIN_VALUE = np.log10(np.finfo(np.float64).eps)
 MAX_VALUE = np.log10(np.finfo(np.float64).max)
@@ -51,12 +85,13 @@ def get_pij(frequencies, mu, t, sf):
     return (1 - exp_mu_t) * frequencies + np.eye(len(frequencies)) * exp_mu_t
 
 
-def get_bottom_up_likelihood(tree, feature, frequencies, sf):
+def get_bottom_up_likelihood(tree, feature, frequencies, sf, is_marginal=True):
     """
     Calculates the bottom-up likelihood for the given tree.
     The likelihood for each node is stored in the corresponding feature,
     given by get_personalised_feature_name(feature, BU_LH).
 
+    :param is_marginal: bool, whether the likelihood reconstruction is marginal (true) or joint (false)
     :param tree: ete3.Tree tree
     :param feature: str, character for which the likelihood is calculated
     :param frequencies: numpy array of state frequencies \pi_i
@@ -65,6 +100,7 @@ def get_bottom_up_likelihood(tree, feature, frequencies, sf):
     """
     lh_sf_feature = get_personalized_feature_name(feature, BU_LH_SF)
     lh_feature = get_personalized_feature_name(feature, BU_LH)
+    lh_joint_state_feature = get_personalized_feature_name(feature, BU_LH_JOINT_STATES)
 
     mu = get_mu(frequencies)
     for node in tree.traverse('postorder'):
@@ -75,8 +111,14 @@ def get_bottom_up_likelihood(tree, feature, frequencies, sf):
         likelihood_array = np.ones(len(frequencies), dtype=np.float64)
 
         for child in node.children:
-            child_pjis = np.transpose(get_pij(frequencies, mu, child.dist, sf))
-            likelihood_array *= getattr(child, lh_feature).dot(child_pjis)
+            child_likelihoods = get_pij(frequencies, mu, child.dist, sf) * getattr(child, lh_feature)
+
+            if is_marginal:
+                likelihood_array *= child_likelihoods.sum(axis=1)
+            else:
+                likelihood_array *= child_likelihoods.max(axis=1)
+                child_states = child_likelihoods.argmax(axis=1)
+                child.add_feature(lh_joint_state_feature, child_states)
 
         if np.all(likelihood_array == 0):
             return -np.inf
@@ -172,7 +214,7 @@ def optimize_likelihood_params(tree, feature, frequencies, sf, optimise_sf=True,
         if np.any(pd.isnull(ps)):
             return np.nan
         freqs, sf_val = get_freq_sf_from_params(ps)
-        res = get_bottom_up_likelihood(tree, feature, freqs, sf_val)
+        res = get_bottom_up_likelihood(tree, feature, freqs, sf_val, True)
         # logging.info('{}\t{}\t->\t{}'.format(frequencies if optimise_frequencies else '',
         #                                      sf_val if optimise_sf else '', res))
         return np.inf if pd.isnull(res) else -res
@@ -395,7 +437,7 @@ def choose_ancestral_states_mppa(tree, feature, states):
     :param feature: str, character for which the ancestral states are to be chosen
     :param states: numpy.array of possible character states in order corresponding to the probabilities array
     :return: void, add ancestral states as the `feature` feature to each node
-    (as a list if multiple states are possible or as a string if only one state is choden)
+    (as a list if multiple states are possible or as a string if only one state is chosen)
     """
     lh_feature = get_personalized_feature_name(feature, LH)
     n = len(states)
@@ -405,14 +447,52 @@ def choose_ancestral_states_mppa(tree, feature, states):
         best_k = n
         best_correstion = np.inf
         for k in range(1, n):
-            correction = np.hstack((np.zeros(n - k), np.ones(k))) - sorted_likelihood
+            correction = np.hstack((np.zeros(n - k), np.ones(k) / k)) - sorted_likelihood
             correction = correction.dot(correction)
             if correction < best_correstion:
                 best_correstion = correction
                 best_k = k
 
-        possible_states = states[sorted(range(n), key=lambda _: -likelihood[_])[:best_k]]
+        possible_states = states[sorted(range(n), key=lambda _: -likelihood[_])[:best_k]].tolist()
         node.add_feature(feature, possible_states[0] if best_k == 1 else possible_states)
+
+
+def choose_ancestral_states_map(tree, feature, states):
+    """
+    Chooses node ancestral states based on their marginal probabilities using MAP method.
+
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the ancestral states are to be chosen
+    :param states: numpy.array of possible character states in order corresponding to the probabilities array
+    :return: void, add ancestral states as the `feature` feature to each node
+    """
+    lh_feature = get_personalized_feature_name(feature, LH)
+    for node in tree.traverse():
+        likelihood = getattr(node, lh_feature)
+        best_state = states[likelihood.argmax()]
+        node.add_feature(feature, best_state)
+
+
+def choose_ancestral_states_joint(tree, feature, states, frequencies):
+    """
+    Chooses node ancestral states based on their marginal probabilities using joint method.
+
+    :param frequencies: numpy array of state frequencies
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the ancestral states are to be chosen
+    :param states: numpy.array of possible character states in order corresponding to the probabilities array
+    :return: void, add ancestral states as the `feature` feature to each node
+    """
+    lh_feature = get_personalized_feature_name(feature, BU_LH)
+    lh_state_feature = get_personalized_feature_name(feature, BU_LH_JOINT_STATES)
+
+    def chose_consistent_state(node, state_index):
+        best_state = states[state_index]
+        node.add_feature(feature, best_state)
+        for child in node.children:
+            chose_consistent_state(child, getattr(child, lh_state_feature)[state_index])
+
+    chose_consistent_state(tree, (getattr(tree, lh_feature) * frequencies).argmax())
 
 
 def visualize(tree, columns, name_column=None, html=None, html_compressed=None,
@@ -473,20 +553,18 @@ def annotate(tree, feature, unique=True):
     all_states = set()
     for node in tree.traverse():
         possible_states = getattr(node, feature)
-        if unique:
-            for state in possible_states if isinstance(possible_states, list) else [possible_states]:
-                node.add_feature(state, True)
-                all_states.add(state)
-        # not the only column to be analysed and the node is unresolved => treat its state as ''
-        elif isinstance(possible_states, list):
+        if isinstance(possible_states, list):
             node.add_feature(feature, '')
-        # not the only column to be analysed but the node has a unique state => let's record it
         else:
             all_states.add(possible_states)
+        if unique:
+            for state in (possible_states if isinstance(possible_states, list) else [possible_states]):
+                node.add_feature(state, True)
+                all_states.add(state)
     return sorted(all_states)
 
 
-def reconstruct_ancestral_states(tree, feature, states, avg_br_len):
+def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_method=MPPA):
     state2index = dict(zip(states, range(len(states))))
 
     frequencies = np.zeros(len(state2index), np.float64)
@@ -503,7 +581,7 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len):
     initialize_tip_bottom_up_likelihoods(tree, feature, state2index)
     alter_zero_tip_likelihoods(tree, feature)
     sf = 1.
-    likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf)
+    likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf, True)
     logging.info('Initial {} values:{}{}{}.\n'
                  .format(feature,
                          ''.join('\n\tfrequency of {}:\t{:.3f}'.format(state, frequencies[state2index[state]])
@@ -513,31 +591,42 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len):
                          '\n\tlog likelihood:\t{:.3f}'.format(likelihood)))
 
     frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf, optimise_frequencies=False, optimise_sf=True)
-    likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf)
+    likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf, True)
     logging.info('Optimised SF for {}:\n'
                  '\tSF:\t{:.3f}, i.e. {:.3f} changes per avg branch\n'
                  '\tlog likelihood:\t{:.3f}.\n'
                  .format(feature, sf / avg_br_len, sf, likelihood))
 
     frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf, optimise_frequencies=True, optimise_sf=False)
-    likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf)
+    likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf, True)
     logging.info('Optimised frequencies for {}:{}\n'
                  '\tlog likelihood:\t{:.3f}.\n'
                  .format(feature,
                          ''.join('\n\t{}:\t{:.3f}'.format(state, frequencies[state2index[state]]) for state in states),
                          likelihood))
 
-    calculate_top_down_likelihood(tree, feature, frequencies, sf)
-    unalter_zero_tip_likelihoods(tree, feature, state2index)
-    calculate_marginal_likelihoods(tree, feature, frequencies)
-    check_marginal_likelihoods(tree, feature)
-    convert_likelihoods_to_probabilities(tree, feature)
-    choose_ancestral_states_mppa(tree, feature, states)
+    if is_marginal(prediction_method):
+        calculate_top_down_likelihood(tree, feature, frequencies, sf)
+        unalter_zero_tip_likelihoods(tree, feature, state2index)
+        calculate_marginal_likelihoods(tree, feature, frequencies)
+        check_marginal_likelihoods(tree, feature)
+        convert_likelihoods_to_probabilities(tree, feature)
+        if MPPA == prediction_method:
+            logging.info('Choosing MPPA ancestral states for {}.\n'.format(feature))
+            choose_ancestral_states_mppa(tree, feature, states)
+        elif MAP == prediction_method:
+            logging.info('Choosing MAP ancestral states for {}.\n'.format(feature))
+            choose_ancestral_states_map(tree, feature, states)
+    # joint
+    else:
+        logging.info('Choosing joint ancestral states for {}.\n'.format(feature))
+        get_bottom_up_likelihood(tree, feature, frequencies, sf, False)
+        choose_ancestral_states_joint(tree, feature, states, frequencies)
 
     return likelihood
 
 
-def acr(tree, df, html=None, html_compressed=None):
+def acr(tree, df, prediction_method=MPPA, html=None, html_compressed=None):
     collapse_zero_branches(tree)
     columns = preannotate_tree(df, tree)
 
@@ -549,10 +638,21 @@ def acr(tree, df, html=None, html_compressed=None):
     def _work(args):
         reconstruct_ancestral_states(*args)
 
+    # create a prediction_method variable for all the columns by either
+    # specifying the default value if nothing was chosen
+    if prediction_method is None:
+        prediction_method = MPPA
+    # and propagating the chosen value to all columns
+    if not isinstance(prediction_method, list):
+        prediction_method = [prediction_method] * len(columns)
+    # or making sure that the default value if chosen for the columns for which the method was not specified
+    else:
+        prediction_method += [MPPA] * (len(columns) - len(prediction_method))
+
     with ThreadPool() as pool:
         pool.map(func=_work,
-                 iterable=((tree, column, np.sort([_ for _ in df[column].unique() if pd.notnull(_)]), avg_br_len)
-                           for column in columns))
+                 iterable=((tree, column, np.sort([_ for _ in df[column].unique() if pd.notnull(_)]), avg_br_len, method)
+                           for (column, method) in zip(columns, prediction_method)))
 
     if html or html_compressed:
         logging.info('\n=============VISUALIZING=============\n')
