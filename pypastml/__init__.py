@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from multiprocessing.pool import ThreadPool
 
 import numpy as np
@@ -26,7 +27,7 @@ def get_mu(frequencies):
     as \mu = 1 / (1 - sum_i \pi_i^2). This way the overall rate of mutation -\mu trace(\Pi Q) is 1.
     See [Gascuel "Mathematics of Evolution and Phylogeny" 2005] for further details.
 
-    :param frequencies: numpy array of frequencies \pi_i
+    :param frequencies: numpy array of state frequencies \pi_i
     :return: mutation rate \mu = 1 / (1 - sum_i \pi_i^2)
     """
     return 1. / (1. - frequencies.dot(frequencies))
@@ -39,7 +40,7 @@ def get_pij(frequencies, mu, t, sf):
     Pij(t) = \pi_j (1 - exp(-mu t)) + exp(-mu t), if i == j, \pi_j (1 - exp(-mu t)), otherwise
     [Gascuel "Mathematics of Evolution and Phylogeny" 2005].
 
-    :param frequencies: numpy array of frequencies \pi_i
+    :param frequencies: numpy array of state frequencies \pi_i
     :param mu: float, mutation rate: \mu = 1 / (1 - sum_i \pi_i^2)
     :param t: float, time t
     :param sf: float, scaling factor by which t should be multiplied.
@@ -51,9 +52,21 @@ def get_pij(frequencies, mu, t, sf):
 
 
 def get_bottom_up_likelihood(tree, feature, frequencies, sf):
+    """
+    Calculates the bottom-up likelihood for the given tree.
+    The likelihood for each node is stored in the corresponding feature,
+    given by get_personalised_feature_name(feature, BU_LH).
+
+    :param tree: ete3.Tree tree
+    :param feature: str, character for which the likelihood is calculated
+    :param frequencies: numpy array of state frequencies \pi_i
+    :param sf: float, scaling factor
+    :return: float, the log likelihood
+    """
+    lh_sf_feature = get_personalized_feature_name(feature, BU_LH_SF)
+    lh_feature = get_personalized_feature_name(feature, BU_LH)
+
     mu = get_mu(frequencies)
-    lh_sf_feature = get_personalised_feature_name(feature, BU_LH_SF)
-    lh_feature = get_personalised_feature_name(feature, BU_LH)
     for node in tree.traverse('postorder'):
         if node.is_leaf():
             node.add_feature(lh_sf_feature, 0)
@@ -68,64 +81,78 @@ def get_bottom_up_likelihood(tree, feature, frequencies, sf):
         if np.all(likelihood_array == 0):
             return -np.inf
 
-        factors = rescale(likelihood_array, node)
+        factors = rescale(likelihood_array, node, going_up=True)
         node.add_feature(lh_feature, likelihood_array)
         node.add_feature(lh_sf_feature, factors + sum(getattr(_, lh_sf_feature) for _ in node.children))
     return np.log(getattr(tree, lh_feature).dot(frequencies)) - getattr(tree, lh_sf_feature) * np.log(10)
 
 
-def rescale(likelihood_array, node):
-    factors = 0
-    if not node.is_root():
-        min_lh_value = np.log10(np.min(likelihood_array[np.nonzero(likelihood_array)]))
-        max_lh_value = np.log10(np.max(likelihood_array[np.nonzero(likelihood_array)]))
+def rescale(likelihood_array, node, going_up=True):
+    """
+    Rescales the likelihood array if it gets too small/large, by multiplying it by a factor of 10.
+    :param likelihood_array: numpy array containing the likelihood to be rescaled
+    :param node: ete3.TreeNode who's likelihood is about to be rescaled.
+    :param going_up: bool, whether we are going bottom-up (true) or top-down (false) in the tree with this likelihood calculation.
+    :return: float, factor of 10 by which the likelihood array has been multiplies.
+    """
+
+    min_lh_value = np.log10(np.min(likelihood_array[np.nonzero(likelihood_array)]))
+    max_lh_value = np.log10(np.max(likelihood_array[np.nonzero(likelihood_array)]))
+
+    num_siblings = 2
+    # if we go up, this likelihood will be multiplied by those of our siblings at the next step
+    if going_up and not node.is_root():
         num_siblings = len(node.up.children)
-        if max_lh_value > MAX_VALUE / num_siblings:
-            factors = MAX_VALUE / num_siblings - max_lh_value
-            likelihood_array *= np.power(10, factors)
-        elif min_lh_value < MIN_VALUE / num_siblings:
-            factors = min(-min_lh_value, MAX_VALUE / num_siblings - max_lh_value)
-            likelihood_array *= np.power(10, factors)
+    # if we go down, this likelihood will be multiplied by those of our children at the next step
+    elif not going_up and not node.is_leaf():
+        num_siblings = len(node.children)
+
+    factors = 0
+
+    if max_lh_value > MAX_VALUE / num_siblings:
+        factors = MAX_VALUE / num_siblings - max_lh_value
+        likelihood_array *= np.power(10, factors)
+    elif min_lh_value < MIN_VALUE / num_siblings:
+        factors = min(-min_lh_value, MAX_VALUE / num_siblings - max_lh_value)
+        likelihood_array *= np.power(10, factors)
     return factors
 
 
-def initialize_tip_states(tree, feature, state2index):
-    zero_parents = set()
+def initialize_tip_bottom_up_likelihoods(tree, feature, state2index):
+    """
+    Initializes the bottom-up likelihood arrays for tips based on their states given by the feature.
+    :param tree: ete3.Tree, tree for which the tip likelihoods are to be initialized
+    :param feature: str, feature in which the tip states are stored (the value could be None for a missing state)
+    :param state2index: dict, mapping state to its index in the likelihood array.
+    :return: void, adds the get_personalised_feature_name(feature, BU_LH) feature to tree tips.
+    """
+    lh_feature = get_personalized_feature_name(feature, BU_LH)
 
-    lh_feature = get_personalised_feature_name(feature, BU_LH)
+    # tips likelihood arrays won't be modified so we might as well just share them
+    all_ones = np.ones(len(state2index), np.float64)
+    state2array = {}
+    for state, index in state2index.items():
+        likelihood_array = np.zeros(len(state2index), np.float64)
+        likelihood_array[index] = 1.
+        state2array[state] = likelihood_array
+    state2array[None] = all_ones
+    state2array[''] = all_ones
 
     for tip in tree:
-        state = getattr(tip, feature, None)
-        if state is not None and state != '':
-            likelihood_array = np.zeros(len(state2index), np.float64)
-            likelihood_array[state2index[state]] = 1.
-        else:
-            likelihood_array = np.ones(len(state2index), np.float64)
-        tip.add_feature(lh_feature, likelihood_array)
-
-        if tip.dist == 0 and state is not None and state != '':
-            zero_parents.add(tip.up)
-
-    # adjust zero tips
-    for parent in zero_parents:
-        states = set()
-        zero_tips = []
-        for tip in parent.children:
-            if not tip.is_leaf() or tip.dist > 0.:
-                continue
-            state = getattr(tip, feature, None)
-            if state is not None and state != '':
-                zero_tips.append(tip)
-                states.add(state)
-        if len(states) > 1.:
-            likelihood_array = np.zeros(len(state2index), np.float64)
-            for state in states:
-                likelihood_array[state2index[state]] = 1.
-            for tip in zero_tips:
-                tip.add_feature(lh_feature, likelihood_array)
+        tip.add_feature(lh_feature, state2array[getattr(tip, feature, '')])
 
 
-def minimize_params(tree, feature, frequencies, sf, optimise_sf=True, optimise_frequencies=True):
+def optimize_likelihood_params(tree, feature, frequencies, sf, optimise_sf=True, optimise_frequencies=True):
+    """
+    Optimizes the likelihood parameters (state frequencies and scaling factor) for the given tree.
+    :param tree: ete3.Tree, tree of interest
+    :param feature: str, character for which the likelihood is optimised
+    :param frequencies: numpy array of initial state frequencies
+    :param sf: float, initial scaling factor
+    :param optimise_sf: bool, whether the scaling factor needs to be optimised
+    :param optimise_frequencies: bool, whether the state frequencies need to be optimised
+    :return: tuple (frequencies, scaling_factor) with the optimized parameters
+    """
     bounds = []
     if optimise_frequencies:
         bounds += [np.array([1e-6, 10e6], np.float64)] * (len(frequencies) - 1)
@@ -186,23 +213,29 @@ def rescale_tree(tree, sf):
 
 def calculate_top_down_likelihood(tree, feature, frequencies, sf):
     """
-    To calculate it we assume that the tree is rooted in this node and combine the likelihoods of the “up-subtrees”,
+    Calculates the top-down likelihood for the given tree.
+    The likelihood for each node is stored in the corresponding feature,
+    given by get_personalised_feature_name(feature, TD_LH).
+
+    To calculate the top-down likelihood of a node, we assume that the tree is rooted in this node
+    and combine the likelihoods of the “up-subtrees”,
     e.g. to calculate the top-down likelihood of a node N1 being in a state i,
     given that its parent node is P and its brother node is N2, we imagine that the tree is re-rooted in N1,
-    therefore P becoming the child of N1, and N2 its grandchild,
-    and then calculate the bottom-up likelihood from the P subtree:
+    therefore P becoming the child of N1, and N2 its grandchild.
+    We then calculate the bottom-up likelihood from the P subtree:
     L_top_down(N1, i) = \sum_j P(i -> j, dist(N1, P)) * L_top_down(P) * \sum_k P(j -> k, dist(N2, P)) * L_bottom_up (N2).
 
     For the root node we assume its top-down likelihood to be 1 for all the states.
-    :param tree:
-    :param frequencies:
-    :return:
+
+    :param tree: ete3.Tree, the tree of interest (with bottom-up likelihood precalculated)
+    :param frequencies: numpy array of state frequencies
+    :return: void, stores the node top-down likelihoods in the get_personalised_feature_name(feature, TD_LH) feature.
     """
 
-    lh_feature = get_personalised_feature_name(feature, TD_LH)
-    lh_sf_feature = get_personalised_feature_name(feature, TD_LH_SF)
-    bu_lh_feature = get_personalised_feature_name(feature, BU_LH)
-    bu_lh_sf_feature = get_personalised_feature_name(feature, BU_LH_SF)
+    lh_feature = get_personalized_feature_name(feature, TD_LH)
+    lh_sf_feature = get_personalized_feature_name(feature, TD_LH_SF)
+    bu_lh_feature = get_personalized_feature_name(feature, BU_LH)
+    bu_lh_sf_feature = get_personalized_feature_name(feature, BU_LH_SF)
 
     mu = get_mu(frequencies)
 
@@ -223,14 +256,54 @@ def calculate_top_down_likelihood(tree, feature, frequencies, sf):
         factors = getattr(parent, lh_sf_feature) + getattr(parent, bu_lh_sf_feature) - getattr(node, bu_lh_sf_feature)
 
         td_likelihood = parent_likelihood.dot(node_pjis)
-        factors += rescale(td_likelihood, node)
+        factors += rescale(td_likelihood, node, going_up=False)
         
         node.add_feature(lh_feature, td_likelihood)
         node.add_feature(lh_sf_feature, factors)
 
 
-def unalter_problematic_tip_states(tree, feature, state2index):
-    lh_feature = get_personalised_feature_name(feature, BU_LH)
+def alter_zero_tip_likelihoods(tree, feature):
+    """
+    Alters the bottom-up likelihood arrays for zero-distance tips
+    to make sure they do not contradict with other zero-distance tip siblings.
+
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the likelihood is altered
+    :return: void, modifies the get_personalised_feature_name(feature, BU_LH) feature to zero-distance tips.
+    """
+    zero_parent2tips = defaultdict(list)
+
+    lh_feature = get_personalized_feature_name(feature, BU_LH)
+
+    for tip in tree:
+        if tip.dist == 0:
+            state = getattr(tip, feature, None)
+            if state is not None and state != '':
+                zero_parent2tips[tip.up].append(tip)
+
+    # adjust zero tips to contain all the zero tip options as states
+    for parent, zero_tips in zero_parent2tips.items():
+        likelihood_array = None
+        for tip in zero_tips:
+            if likelihood_array is None:
+                likelihood_array = getattr(tip, lh_feature).copy()
+            else:
+                tip_likelihood_array = getattr(tip, lh_feature)
+                likelihood_array[np.nonzero(tip_likelihood_array)] = 1.
+            tip.add_feature(lh_feature, likelihood_array)
+
+
+def unalter_zero_tip_likelihoods(tree, feature, state2index):
+    """
+    Unalters the bottom-up likelihood arrays for zero-distance tips
+    to contain ones only in their states.
+
+    :param state2index: dict, mapping between states and their indices in the likelihood array
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the likelihood was altered
+    :return: void, modifies the get_personalised_feature_name(feature, BU_LH) feature to zero-distance tips.
+    """
+    lh_feature = get_personalized_feature_name(feature, BU_LH)
     for tip in tree:
         if tip.dist > 0:
             continue
@@ -241,13 +314,22 @@ def unalter_problematic_tip_states(tree, feature, state2index):
             tip.add_feature(lh_feature, likelihood_array)
 
 
-def calculate_marginal_probabilities(tree, feature, frequencies):
-    bu_lh_feature = get_personalised_feature_name(feature, BU_LH)
-    bu_lh_sf_feature = get_personalised_feature_name(feature, BU_LH_SF)
-    td_lh_feature = get_personalised_feature_name(feature, TD_LH)
-    td_lh_sf_feature = get_personalised_feature_name(feature, TD_LH_SF)
-    lh_feature = get_personalised_feature_name(feature, LH)
-    lh_sf_feature = get_personalised_feature_name(feature, LH_SF)
+def calculate_marginal_likelihoods(tree, feature, frequencies):
+    """
+    Calculates marginal likelihoods for each tree node
+    by multiplying state frequencies with their bottom-up and top-down likelihoods.
+
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the likelihood is calculated
+    :param frequencies: numpy array of state frequencies
+    :return: void, stores the node marginal likelihoods in the get_personalised_feature_name(feature, LH) feature.
+    """
+    bu_lh_feature = get_personalized_feature_name(feature, BU_LH)
+    bu_lh_sf_feature = get_personalized_feature_name(feature, BU_LH_SF)
+    td_lh_feature = get_personalized_feature_name(feature, TD_LH)
+    td_lh_sf_feature = get_personalized_feature_name(feature, TD_LH_SF)
+    lh_feature = get_personalized_feature_name(feature, LH)
+    lh_sf_feature = get_personalized_feature_name(feature, LH_SF)
 
     for node in tree.traverse('preorder'):
         likelihood = getattr(node, bu_lh_feature) * getattr(node, td_lh_feature) * frequencies
@@ -260,9 +342,17 @@ def calculate_marginal_probabilities(tree, feature, frequencies):
         node.del_feature(td_lh_sf_feature)
 
 
-def check_marginal_probabilities(tree, feature):
-    lh_feature = get_personalised_feature_name(feature, LH)
-    lh_sf_feature = get_personalised_feature_name(feature, LH_SF)
+def check_marginal_likelihoods(tree, feature):
+    """
+    Tests if marginal likelihoods were correctly calculated
+    by comparing the likelihoods of all the nodes (should be all the same).
+
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the likelihood is to be checked
+    :return: void, assertion fails if there is a problem with the likelihood.
+    """
+    lh_feature = get_personalized_feature_name(feature, LH)
+    lh_sf_feature = get_personalized_feature_name(feature, LH_SF)
 
     for node in tree.traverse('preorder'):
         if not node.is_root() and not (node.is_leaf() and node.dist == 0):
@@ -271,19 +361,43 @@ def check_marginal_probabilities(tree, feature):
             assert np.round(node_loglh, 2) == np.round(parent_loglh, 2)
 
 
-def normalize_result_probabilities(tree, feature):
-    lh_feature = get_personalised_feature_name(feature, LH)
+def convert_likelihoods_to_probabilities(tree, feature):
+    """
+    Normalizes each node maginal likelihoods to convert them to marginal probabilities.
+
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the probabilities are calculated
+    :return: void, modifies the node get_personalised_feature_name(feature, LH) feature to store the probabilities.
+    """
+    lh_feature = get_personalized_feature_name(feature, LH)
     for node in tree.traverse():
         lh = getattr(node, lh_feature)
         lh /= lh.sum()
 
 
-def get_personalised_feature_name(column, feature):
-    return '{}_{}'.format(column, feature)
+def get_personalized_feature_name(character, feature):
+    """
+    Precedes the feature name by the character name
+    (useful when likelihoods for different characters are calculated in parallel).
+
+    :param character: str, character name
+    :param feature: str, feature to be personalized
+    :return: str, the personalized feature
+    """
+    return '{}_{}'.format(character, feature)
 
 
-def choose_ancestral_states(tree, feature, states):
-    lh_feature = get_personalised_feature_name(feature, LH)
+def choose_ancestral_states_mppa(tree, feature, states):
+    """
+    Chooses node ancestral states based on their marginal probabilities using MPPA method.
+
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the ancestral states are to be chosen
+    :param states: numpy.array of possible character states in order corresponding to the probabilities array
+    :return: void, add ancestral states as the `feature` feature to each node
+    (as a list if multiple states are possible or as a string if only one state is choden)
+    """
+    lh_feature = get_personalized_feature_name(feature, LH)
     n = len(states)
     for node in tree.traverse():
         likelihood = getattr(node, lh_feature)
@@ -374,7 +488,6 @@ def annotate(tree, feature, unique=True):
 
 def reconstruct_ancestral_states(tree, feature, states, avg_br_len):
     state2index = dict(zip(states, range(len(states))))
-    initialize_tip_states(tree, feature, state2index)
 
     frequencies = np.zeros(len(state2index), np.float64)
     missing_frequency = 0.
@@ -386,8 +499,10 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len):
             missing_frequency += 1
     total_count = frequencies.sum() + missing_frequency
     frequencies /= total_count
-    sf = 1.
 
+    initialize_tip_bottom_up_likelihoods(tree, feature, state2index)
+    alter_zero_tip_likelihoods(tree, feature)
+    sf = 1.
     likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf)
     logging.info('Initial {} values:{}{}{}.\n'
                  .format(feature,
@@ -397,14 +512,14 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len):
                                           if missing_frequency else '',
                          '\n\tlog likelihood:\t{:.3f}'.format(likelihood)))
 
-    frequencies, sf = minimize_params(tree, feature, frequencies, sf, optimise_frequencies=False, optimise_sf=True)
+    frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf, optimise_frequencies=False, optimise_sf=True)
     likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf)
     logging.info('Optimised SF for {}:\n'
                  '\tSF:\t{:.3f}, i.e. {:.3f} changes per avg branch\n'
                  '\tlog likelihood:\t{:.3f}.\n'
                  .format(feature, sf / avg_br_len, sf, likelihood))
 
-    frequencies, sf = minimize_params(tree, feature, frequencies, sf, optimise_frequencies=True, optimise_sf=False)
+    frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf, optimise_frequencies=True, optimise_sf=False)
     likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf)
     logging.info('Optimised frequencies for {}:{}\n'
                  '\tlog likelihood:\t{:.3f}.\n'
@@ -413,11 +528,11 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len):
                          likelihood))
 
     calculate_top_down_likelihood(tree, feature, frequencies, sf)
-    unalter_problematic_tip_states(tree, feature, state2index)
-    calculate_marginal_probabilities(tree, feature, frequencies)
-    check_marginal_probabilities(tree, feature)
-    normalize_result_probabilities(tree, feature)
-    choose_ancestral_states(tree, feature, states)
+    unalter_zero_tip_likelihoods(tree, feature, state2index)
+    calculate_marginal_likelihoods(tree, feature, frequencies)
+    check_marginal_likelihoods(tree, feature)
+    convert_likelihoods_to_probabilities(tree, feature)
+    choose_ancestral_states_mppa(tree, feature, states)
 
     return likelihood
 
