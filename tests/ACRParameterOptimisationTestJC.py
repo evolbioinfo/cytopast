@@ -21,12 +21,12 @@ class ACRParameterOptimisationTestJC(unittest.TestCase):
         self.acr_result = acr(self.tree, df, prediction_method=MPPA, model=JC)[0]
 
     def test_likelihood(self):
-        self.assertAlmostEqual(self.acr_result.likelihood, -121.873, places=3,
+        self.assertAlmostEqual(-121.873, self.acr_result.likelihood, places=3,
                                msg='Likelihood was supposed to be the {:.3f}, got {:3f}'
                                .format(-121.873, self.acr_result.likelihood))
 
     def test_sf(self):
-        self.assertAlmostEqual(self.acr_result.sf, 4.951, places=3,
+        self.assertAlmostEqual(4.951, self.acr_result.sf, places=3,
                                msg='SF was supposed to be the {:.3f}, got {:3f}'
                                .format(4.951, self.acr_result.sf))
 

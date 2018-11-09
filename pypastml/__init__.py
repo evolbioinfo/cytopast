@@ -574,7 +574,7 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_m
     n = len(states)
     state2index = dict(zip(states, range(n)))
 
-    missing_frequency = 0.
+    missing_data = 0.
 
     if JC == model:
         frequencies = np.ones(n, dtype=np.float64) / n
@@ -585,10 +585,10 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_m
             if state is not None and state != '':
                 frequencies[state2index[state]] += 1
             else:
-                missing_frequency += 1
-        total_count = frequencies.sum() + missing_frequency
-        frequencies /= total_count
-        missing_frequency /= total_count
+                missing_data += 1
+        total_count = frequencies.sum() + missing_data
+        frequencies /= frequencies.sum()
+        missing_data /= total_count
 
     initialize_tip_bottom_up_likelihoods(tree, feature, state2index)
     alter_zero_tip_likelihoods(tree, feature)
@@ -598,8 +598,7 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_m
                  .format(feature,
                          ''.join('\n\tfrequency of {}:\t{:.3f}'.format(state, frequencies[state2index[state]])
                                  for state in states),
-                         '\n\tfrequency of missing data:\t{:.3f}'.format(missing_frequency)
-                                          if missing_frequency else '',
+                         '\n\tfraction of missing data:\t{:.3f}'.format(missing_data) if missing_data else '',
                          '\n\tSF:\t{:.3f}, i.e. {:.3f} changes per avg branch'.format(sf / avg_br_len, sf),
                          '\n\tlog likelihood:\t{:.3f}'.format(likelihood)))
 
@@ -735,5 +734,3 @@ def preannotate_tree(df, tree):
         if _.name in df.index:
             _.add_features(**df.loc[_.name, :].to_dict())
     return df.columns
-
-
