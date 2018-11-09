@@ -356,6 +356,25 @@ def unalter_zero_tip_likelihoods(tree, feature, state2index):
             tip.add_feature(lh_feature, likelihood_array)
 
 
+def unalter_zero_tip_joint_states(tree, feature, state2index):
+    """
+    Unalters the joint tip states for zero-distance tips
+    to contain only their states.
+
+    :param state2index: dict, mapping between states and their indices in the joint state array
+    :param tree: ete3.Tree, the tree of interest
+    :param feature: str, character for which the likelihood was altered
+    :return: void, modifies the get_personalised_feature_name(feature, BU_LH_JOINT_STATES) feature to zero-distance tips.
+    """
+    lh_joint_state_feature = get_personalized_feature_name(feature, BU_LH_JOINT_STATES)
+    for tip in tree:
+        if tip.dist > 0:
+            continue
+        state = getattr(tip, feature, None)
+        if state is not None and state != '':
+            tip.add_feature(lh_joint_state_feature, np.ones(len(state2index), np.int) * state2index[state])
+
+
 def calculate_marginal_likelihoods(tree, feature, frequencies):
     """
     Calculates marginal likelihoods for each tree node
@@ -564,46 +583,57 @@ def annotate(tree, feature, unique=True):
     return sorted(all_states)
 
 
-def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_method=MPPA):
-    state2index = dict(zip(states, range(len(states))))
+def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_method=MPPA, model=F81):
+    n = len(states)
+    state2index = dict(zip(states, range(n)))
 
-    frequencies = np.zeros(len(state2index), np.float64)
     missing_frequency = 0.
-    for _ in tree:
-        state = getattr(_, feature, None)
-        if state is not None and state != '':
-            frequencies[state2index[state]] += 1
-        else:
-            missing_frequency += 1
-    total_count = frequencies.sum() + missing_frequency
-    frequencies /= total_count
+
+    if JC == model:
+        frequencies = np.ones(n, dtype=np.float64) / n
+    else:
+        frequencies = np.zeros(n, np.float64)
+        for _ in tree:
+            state = getattr(_, feature, None)
+            if state is not None and state != '':
+                frequencies[state2index[state]] += 1
+            else:
+                missing_frequency += 1
+        total_count = frequencies.sum() + missing_frequency
+        frequencies /= total_count
+        missing_frequency /= total_count
 
     initialize_tip_bottom_up_likelihoods(tree, feature, state2index)
     alter_zero_tip_likelihoods(tree, feature)
     sf = 1.
     likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf, True)
-    logging.info('Initial {} values:{}{}{}.\n'
+    logging.info('Initial {} values:{}{}{}{}.\n'
                  .format(feature,
                          ''.join('\n\tfrequency of {}:\t{:.3f}'.format(state, frequencies[state2index[state]])
                                  for state in states),
-                         '\n\tfrequency of missing data:\t{:.3f}'.format(missing_frequency / total_count)
+                         '\n\tfrequency of missing data:\t{:.3f}'.format(missing_frequency)
                                           if missing_frequency else '',
+                         '\tSF:\t{:.3f}, i.e. {:.3f} changes per avg branch\n'.format(sf / avg_br_len, sf),
                          '\n\tlog likelihood:\t{:.3f}'.format(likelihood)))
 
-    frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf, optimise_frequencies=False, optimise_sf=True)
+    frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf,
+                                                 optimise_frequencies=False, optimise_sf=True)
     likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf, True)
     logging.info('Optimised SF for {}:\n'
                  '\tSF:\t{:.3f}, i.e. {:.3f} changes per avg branch\n'
                  '\tlog likelihood:\t{:.3f}.\n'
                  .format(feature, sf / avg_br_len, sf, likelihood))
 
-    frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf, optimise_frequencies=True, optimise_sf=False)
-    likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf, True)
-    logging.info('Optimised frequencies for {}:{}\n'
-                 '\tlog likelihood:\t{:.3f}.\n'
-                 .format(feature,
-                         ''.join('\n\t{}:\t{:.3f}'.format(state, frequencies[state2index[state]]) for state in states),
-                         likelihood))
+    if F81 == model:
+        frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf,
+                                                     optimise_frequencies=True, optimise_sf=False)
+        likelihood = get_bottom_up_likelihood(tree, feature, frequencies, sf, True)
+        logging.info('Optimised frequencies for {}:{}\n'
+                     '\tlog likelihood:\t{:.3f}.\n'
+                     .format(feature,
+                             ''.join('\n\t{}:\t{:.3f}'
+                                     .format(state, frequencies[state2index[state]]) for state in states),
+                             likelihood))
 
     if is_marginal(prediction_method):
         calculate_top_down_likelihood(tree, feature, frequencies, sf)
@@ -621,12 +651,13 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_m
     else:
         logging.info('Choosing joint ancestral states for {}.\n'.format(feature))
         get_bottom_up_likelihood(tree, feature, frequencies, sf, False)
+        unalter_zero_tip_joint_states(tree, feature, state2index)
         choose_ancestral_states_joint(tree, feature, states, frequencies)
 
     return likelihood
 
 
-def acr(tree, df, prediction_method=MPPA, html=None, html_compressed=None):
+def acr(tree, df, prediction_method=MPPA, model=F81, html=None, html_compressed=None):
     collapse_zero_branches(tree)
     columns = preannotate_tree(df, tree)
 
@@ -638,25 +669,31 @@ def acr(tree, df, prediction_method=MPPA, html=None, html_compressed=None):
     def _work(args):
         reconstruct_ancestral_states(*args)
 
-    # create a prediction_method variable for all the columns by either
-    # specifying the default value if nothing was chosen
-    if prediction_method is None:
-        prediction_method = MPPA
-    # and propagating the chosen value to all columns
-    if not isinstance(prediction_method, list):
-        prediction_method = [prediction_method] * len(columns)
-    # or making sure that the default value if chosen for the columns for which the method was not specified
-    else:
-        prediction_method += [MPPA] * (len(columns) - len(prediction_method))
+    prediction_methods = value2list(columns, prediction_method, MPPA)
+    models = value2list(columns, model, F81)
 
     with ThreadPool() as pool:
         pool.map(func=_work,
-                 iterable=((tree, column, np.sort([_ for _ in df[column].unique() if pd.notnull(_)]), avg_br_len, method)
-                           for (column, method) in zip(columns, prediction_method)))
+                 iterable=((tree, column, np.sort([_ for _ in df[column].unique() if pd.notnull(_)]), avg_br_len, method, model)
+                           for (column, method, model) in zip(columns, prediction_methods, models)))
 
     if html or html_compressed:
         logging.info('\n=============VISUALIZING=============\n')
         visualize(tree, columns, html=html, html_compressed=html_compressed)
+
+
+def value2list(columns, value, default_value):
+    # create a variable for all the columns by either
+    # specifying the default value if nothing was chosen
+    if value is None:
+        value = default_value
+    # and propagating the chosen value to all columns
+    if not isinstance(value, list):
+        value = [value] * len(columns)
+    # or making sure that the default value if chosen for the columns for which the value was not specified
+    else:
+        value += [default_value] * (len(columns) - len(value))
+    return value
 
 
 def get_tree_stats(tree):
