@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from multiprocessing.pool import ThreadPool
 
 import numpy as np
@@ -13,6 +13,7 @@ from cytopast.cytoscape_manager import save_as_cytoscape_html
 BU_LH = 'BOTTOM_UP_LIKELIHOOD'
 TD_LH = 'TOP_DOWN_LIKELIHOOD'
 LH = 'LIKELIHOOD'
+MARGINAL_PROBS = 'MARGINAL_PROBABILITIES'
 LH_SF = 'LIKELIHOOD_SF'
 BU_LH_SF = 'BOTTOM_UP_LIKELIHOOD_SF'
 BU_LH_JOINT_STATES = 'BOTTOM_UP_LIKELIHOOD_JOINT_STATES'
@@ -403,37 +404,19 @@ def calculate_marginal_likelihoods(tree, feature, frequencies):
         node.del_feature(td_lh_sf_feature)
 
 
-def check_marginal_likelihoods(tree, feature):
-    """
-    Tests if marginal likelihoods were correctly calculated
-    by comparing the likelihoods of all the nodes (should be all the same).
-
-    :param tree: ete3.Tree, the tree of interest
-    :param feature: str, character for which the likelihood is to be checked
-    :return: void, assertion fails if there is a problem with the likelihood.
-    """
-    lh_feature = get_personalized_feature_name(feature, LH)
-    lh_sf_feature = get_personalized_feature_name(feature, LH_SF)
-
-    for node in tree.traverse('preorder'):
-        if not node.is_root() and not (node.is_leaf() and node.dist == 0):
-            node_loglh = np.log10(getattr(node, lh_feature).sum()) - getattr(node, lh_sf_feature)
-            parent_loglh = np.log10(getattr(node.up, lh_feature).sum()) - getattr(node.up, lh_sf_feature)
-            assert np.round(node_loglh, 2) == np.round(parent_loglh, 2)
-
-
 def convert_likelihoods_to_probabilities(tree, feature):
     """
-    Normalizes each node maginal likelihoods to convert them to marginal probabilities.
+    Normalizes each node marginal likelihoods to convert them to marginal probabilities.
 
     :param tree: ete3.Tree, the tree of interest
     :param feature: str, character for which the probabilities are calculated
-    :return: void, modifies the node get_personalised_feature_name(feature, LH) feature to store the probabilities.
+    :return: void, adds node get_personalised_feature_name(feature, MARGINAL_PROBS) feature to store the probabilities.
     """
     lh_feature = get_personalized_feature_name(feature, LH)
+    mp_feature = get_personalized_feature_name(feature, MARGINAL_PROBS)
     for node in tree.traverse():
         lh = getattr(node, lh_feature)
-        lh /= lh.sum()
+        node.add_feature(mp_feature, lh / lh.sum())
 
 
 def get_personalized_feature_name(character, feature):
@@ -458,21 +441,21 @@ def choose_ancestral_states_mppa(tree, feature, states):
     :return: void, add ancestral states as the `feature` feature to each node
     (as a list if multiple states are possible or as a string if only one state is chosen)
     """
-    lh_feature = get_personalized_feature_name(feature, LH)
+    mp_feature = get_personalized_feature_name(feature, MARGINAL_PROBS)
     n = len(states)
     for node in tree.traverse():
-        likelihood = getattr(node, lh_feature)
-        sorted_likelihood = np.sort(likelihood)
+        marginal_probs = getattr(node, mp_feature)
+        sorted_marginal_probs = np.sort(marginal_probs)
         best_k = n
         best_correstion = np.inf
         for k in range(1, n):
-            correction = np.hstack((np.zeros(n - k), np.ones(k) / k)) - sorted_likelihood
+            correction = np.hstack((np.zeros(n - k), np.ones(k) / k)) - sorted_marginal_probs
             correction = correction.dot(correction)
             if correction < best_correstion:
                 best_correstion = correction
                 best_k = k
 
-        possible_states = states[sorted(range(n), key=lambda _: -likelihood[_])[:best_k]].tolist()
+        possible_states = states[sorted(range(n), key=lambda _: -marginal_probs[_])[:best_k]].tolist()
         node.add_feature(feature, possible_states[0] if best_k == 1 else possible_states)
 
 
@@ -485,10 +468,10 @@ def choose_ancestral_states_map(tree, feature, states):
     :param states: numpy.array of possible character states in order corresponding to the probabilities array
     :return: void, add ancestral states as the `feature` feature to each node
     """
-    lh_feature = get_personalized_feature_name(feature, LH)
+    mp_feature = get_personalized_feature_name(feature, MARGINAL_PROBS)
     for node in tree.traverse():
-        likelihood = getattr(node, lh_feature)
-        best_state = states[likelihood.argmax()]
+        marginal_probs = getattr(node, mp_feature)
+        best_state = states[marginal_probs.argmax()]
         node.add_feature(feature, best_state)
 
 
@@ -583,7 +566,11 @@ def annotate(tree, feature, unique=True):
     return sorted(all_states)
 
 
-def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_method=MPPA, model=F81):
+ACRResult = namedtuple('ACRResult',
+                       field_names=['likelihood', 'frequencies', 'sf', 'character', 'states', 'method', 'model'])
+
+
+def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_method=MPPA, model=None):
     n = len(states)
     state2index = dict(zip(states, range(n)))
 
@@ -613,7 +600,7 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_m
                                  for state in states),
                          '\n\tfrequency of missing data:\t{:.3f}'.format(missing_frequency)
                                           if missing_frequency else '',
-                         '\tSF:\t{:.3f}, i.e. {:.3f} changes per avg branch\n'.format(sf / avg_br_len, sf),
+                         '\n\tSF:\t{:.3f}, i.e. {:.3f} changes per avg branch'.format(sf / avg_br_len, sf),
                          '\n\tlog likelihood:\t{:.3f}'.format(likelihood)))
 
     frequencies, sf = optimize_likelihood_params(tree, feature, frequencies, sf,
@@ -639,7 +626,6 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_m
         calculate_top_down_likelihood(tree, feature, frequencies, sf)
         unalter_zero_tip_likelihoods(tree, feature, state2index)
         calculate_marginal_likelihoods(tree, feature, frequencies)
-        check_marginal_likelihoods(tree, feature)
         convert_likelihoods_to_probabilities(tree, feature)
         if MPPA == prediction_method:
             logging.info('Choosing MPPA ancestral states for {}.\n'.format(feature))
@@ -649,12 +635,13 @@ def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_m
             choose_ancestral_states_map(tree, feature, states)
     # joint
     else:
-        logging.info('Choosing joint ancestral states for {}.\n'.format(feature))
         get_bottom_up_likelihood(tree, feature, frequencies, sf, False)
         unalter_zero_tip_joint_states(tree, feature, state2index)
+        logging.info('Choosing joint ancestral states for {}.\n'.format(feature))
         choose_ancestral_states_joint(tree, feature, states, frequencies)
 
-    return likelihood
+    return ACRResult(likelihood=likelihood, frequencies=frequencies, sf=sf / avg_br_len,
+                     method=prediction_method, model=model, character=feature, states=states)
 
 
 def acr(tree, df, prediction_method=MPPA, model=F81, html=None, html_compressed=None):
@@ -667,19 +654,22 @@ def acr(tree, df, prediction_method=MPPA, model=F81, html=None, html_compressed=
     rescale_tree(tree, 1. / avg_br_len)
 
     def _work(args):
-        reconstruct_ancestral_states(*args)
+        return reconstruct_ancestral_states(*args)
 
     prediction_methods = value2list(columns, prediction_method, MPPA)
     models = value2list(columns, model, F81)
 
     with ThreadPool() as pool:
-        pool.map(func=_work,
-                 iterable=((tree, column, np.sort([_ for _ in df[column].unique() if pd.notnull(_)]), avg_br_len, method, model)
-                           for (column, method, model) in zip(columns, prediction_methods, models)))
+        acr_results = \
+            pool.map(func=_work, iterable=((tree, column, np.sort([_ for _ in df[column].unique() if pd.notnull(_)]),
+                                            avg_br_len, method, model)
+                                           for (column, method, model) in zip(columns, prediction_methods, models)))
 
     if html or html_compressed:
         logging.info('\n=============VISUALIZING=============\n')
         visualize(tree, columns, html=html, html_compressed=html_compressed)
+
+    return acr_results
 
 
 def value2list(columns, value, default_value):
