@@ -4,7 +4,8 @@ import unittest
 import pandas as pd
 
 from cytopast import read_tree
-from pypastml import acr, EFT, JOINT
+from pypastml.acr import acr
+from pypastml.ml import JOINT, EFT
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
 TREE_NWK = os.path.join(DATA_DIR, 'Albanian.tree.152tax.tre')

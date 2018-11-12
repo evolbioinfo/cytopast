@@ -4,7 +4,8 @@ import unittest
 import pandas as pd
 
 from cytopast import read_tree
-from pypastml import acr, MPPA, F81
+from pypastml.acr import acr
+from pypastml.ml import MPPA, F81
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
 TREE_NWK = os.path.join(DATA_DIR, 'Albanian.tree.152tax.tre')
@@ -30,14 +31,14 @@ class ACRStateTestMPPAF81(unittest.TestCase):
         for node in self.tree.traverse():
             if isinstance(getattr(node, self.feature), list):
                 num += 1
-        self.assertEqual(6, num, msg='Was supposed to have {} unresolved nodes, got {}.'.format(6, num))
+        self.assertEqual(5, num, msg='Was supposed to have {} unresolved nodes, got {}.'.format(5, num))
 
     def test_num_African_nodes(self):
         num = 0
         for node in self.tree.traverse():
             if not isinstance(getattr(node, self.feature), list) and 'Africa' == getattr(node, self.feature):
                 num += 1
-        self.assertEqual(113, num, msg='Was supposed to have {} African nodes, got {}.'.format(113, num))
+        self.assertEqual(114, num, msg='Was supposed to have {} African nodes, got {}.'.format(114, num))
 
     def test_num_Albanian_nodes(self):
         num = 0
@@ -61,9 +62,9 @@ class ACRStateTestMPPAF81(unittest.TestCase):
         self.assertEqual(27, num, msg='Was supposed to have {} West European nodes, got {}.'.format(27, num))
 
     def test_state_unresolved_internal_node(self):
-        expected_state = {'Africa', 'Greece'}
+        expected_state = {'Africa', 'Greece', 'WestEurope'}
         for node in self.tree.traverse():
-            if 'node_79' == node.name:
+            if 'node_48' == node.name:
                 state = set(getattr(node, self.feature))
                 self.assertSetEqual(expected_state, state, msg='{} state was supposed to be {}, got {}.'
                                     .format(node.name, expected_state, state))

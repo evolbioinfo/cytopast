@@ -5,7 +5,9 @@ import numpy as np
 import pandas as pd
 
 from cytopast import read_tree
-from pypastml import acr, MPPA, F81, MARGINAL_PROBS, get_personalized_feature_name, LH, LH_SF
+from pypastml import get_personalized_feature_name
+from pypastml.acr import acr
+from pypastml.ml import LH, LH_SF, MPPA, F81, MARGINAL_PROBS
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
 TREE_NWK = os.path.join(DATA_DIR, 'Albanian.tree.152tax.tre')
@@ -21,17 +23,18 @@ class ACRParameterOptimisationTestF81(unittest.TestCase):
         self.acr_result = acr(self.tree, df, prediction_method=MPPA, model=F81)[0]
 
     def test_likelihood(self):
-        self.assertAlmostEqual(-111.166, self.acr_result.likelihood, places=3,
+        self.assertAlmostEqual(-110.178, self.acr_result.likelihood, places=3,
                                msg='Likelihood was supposed to be the {:.3f}, got {:3f}'
-                               .format(-111.166, self.acr_result.likelihood))
+                               .format(-110.178, self.acr_result.likelihood))
 
     def test_sf(self):
-        self.assertAlmostEqual(5.38, self.acr_result.sf, places=3,
+        self.assertAlmostEqual(3.841, self.acr_result.sf, places=3,
                                msg='SF was supposed to be the {:.3f}, got {:3f}'
-                               .format(5.38, self.acr_result.sf))
+                               .format(3.841, self.acr_result.sf))
 
     def test_frequencies(self):
-        for loc, expected_value in {'Africa': 0.163, 'Albania': 0.029, 'EastEurope': 0.08, 'Greece': 0.339, 'WestEurope': 0.388}.items():
+        for loc, expected_value in {'Africa': 0.082, 'Albania': 0.028, 'EastEurope': 0.081, 'Greece': 0.365,
+                                    'WestEurope': 0.444}.items():
             value = self.acr_result.frequencies[np.where(self.acr_result.states == loc)][0]
             self.assertAlmostEqual(value, expected_value, places=3,
                                    msg='Frequency of {} was supposed to be the {:.3f}, got {:3f}'
@@ -60,8 +63,8 @@ class ACRParameterOptimisationTestF81(unittest.TestCase):
 
     def test_marginal_probs_root(self):
         mps = getattr(self.tree, get_personalized_feature_name(self.feature, MARGINAL_PROBS))
-        expected_values = {'Africa': 0.84190446, 'Albania': 0.00331489, 'EastEurope': 0.02929117,
-                           'Greece': 0.03835660, 'WestEurope': 0.08713289}
+        expected_values = {'Africa': 0.952, 'Albania': 0.001, 'EastEurope': 0.011,
+                           'Greece': 0.011, 'WestEurope': 0.025}
         for loc, expected_value in expected_values.items():
             value = mps[np.where(self.acr_result.states == loc)][0]
             self.assertAlmostEqual(value, expected_value, places=3,
@@ -72,8 +75,8 @@ class ACRParameterOptimisationTestF81(unittest.TestCase):
         for node in self.tree.traverse():
             if 'node_4' == node.name:
                 mps = getattr(node, get_personalized_feature_name(self.feature, MARGINAL_PROBS))
-                expected_values = {'Africa': 0.78221676, 'Albania': 0.00051597, 'EastEurope': 0.00192264,
-                                   'Greece': 0.00597012, 'WestEurope': 0.20937451}
+                expected_values = {'Africa': 0.944, 'Albania': 0.000, 'EastEurope': 0.000,
+                                   'Greece': 0.001, 'WestEurope': 0.054}
                 for loc, expected_value in expected_values.items():
                     value = mps[np.where(self.acr_result.states == loc)][0]
                     self.assertAlmostEqual(value, expected_value, places=3,

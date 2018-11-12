@@ -5,7 +5,9 @@ import numpy as np
 import pandas as pd
 
 from cytopast import read_tree
-from pypastml import acr, MPPA, JC, get_personalized_feature_name, LH, LH_SF
+from pypastml import get_personalized_feature_name
+from pypastml.acr import acr
+from pypastml.ml import LH, LH_SF, MPPA, JC
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
 TREE_NWK = os.path.join(DATA_DIR, 'Albanian.tree.152tax.tre')
