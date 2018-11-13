@@ -14,6 +14,16 @@ PARS_STATES = 'PARSIMONY'
 PARS_STATE2NUM = 'PARSIMONY_STEPS'
 
 
+def is_parsimonious(method):
+    """
+    Checks if the method is max likelihood, i.e. is either joint or one of the marginal ones
+    (marginal itself, or MAP, or MPPA).
+    :param method: str, the ancestral state prediction method used by PASTML.
+    :return: bool
+    """
+    return method in {DOWNPASS, ACCTRAN, DELTRAN}
+
+
 def initialise_tip_parsimonious_states(tree, feature, states):
     """
     Initializes the bottom-up state arrays for tips based on their states given by the feature.

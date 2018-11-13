@@ -64,7 +64,7 @@ def visualize(tree, columns, name_column=None, html=None, html_compressed=None,
 def annotate(tree, feature, unique=True):
     all_states = set()
     for node in tree.traverse():
-        possible_states = getattr(node, feature)
+        possible_states = getattr(node, feature, [])
         if isinstance(possible_states, list):
             node.add_feature(feature, '')
         else:

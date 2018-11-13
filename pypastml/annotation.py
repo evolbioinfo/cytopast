@@ -48,7 +48,7 @@ def preannotate_tree(df, tree):
     df.columns = [col_name2cat(col) for col in df.columns]
     df.index = df.index.map(str)
     df.fillna('', inplace=True)
-    for _ in tree:
+    for _ in tree.traverse():
         if _.name in df.index:
             _.add_features(**df.loc[_.name, :].to_dict())
     return df.columns

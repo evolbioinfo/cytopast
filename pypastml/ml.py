@@ -7,14 +7,15 @@ from scipy.optimize import minimize
 
 from pypastml import get_personalized_feature_name
 
-ACRMLResult = namedtuple('ACRMLResult',
-                         field_names=['likelihood', 'frequencies', 'sf', 'character', 'states', 'method', 'model'])
+ACRMLJointResult = namedtuple('ACRMLJointResult',
+                              field_names=['likelihood', 'frequencies', 'sf', 'character', 'states', 'method', 'model'])
 
+ACRMLMarginalResult = namedtuple('ACRMLMarginalResult',
+                                 field_names=['likelihood', 'frequencies', 'sf', 'character', 'states', 'method',
+                                              'model', 'marginal_probabilities'])
 
 MIN_VALUE = np.log10(np.finfo(np.float64).eps)
 MAX_VALUE = np.log10(np.finfo(np.float64).max)
-
-MARGINAL_PROBS = 'MARGINAL_PROBABILITIES'
 
 JOINT = 'joint'
 MPPA = 'MPPA'
@@ -387,20 +388,24 @@ def calculate_marginal_likelihoods(tree, feature, frequencies):
         node.del_feature(td_lh_sf_feature)
 
 
-def convert_likelihoods_to_probabilities(tree, feature):
+def convert_likelihoods_to_probabilities(tree, feature, states):
     """
     Normalizes each node marginal likelihoods to convert them to marginal probabilities.
 
+    :param states: numpy array of states in the order corresponding to the marginal likelihood arrays
     :param tree: ete3.Tree, the tree of interest
     :param feature: str, character for which the probabilities are calculated
-    :return: void, adds node get_personalised_feature_name(feature, MARGINAL_PROBS) feature to store the probabilities.
+    :return: pandas DataFrame, that maps node names to their marginal likelihoods.
     """
     lh_feature = get_personalized_feature_name(feature, LH)
-    mp_feature = get_personalized_feature_name(feature, MARGINAL_PROBS)
+
+    name2probs = {}
+
     for node in tree.traverse():
         lh = getattr(node, lh_feature)
-        node.add_feature(mp_feature, lh / lh.sum())
+        name2probs[node.name] = lh / lh.sum()
 
+    return pd.DataFrame.from_dict(name2probs, orient='index', columns=states)
 
 
 def choose_ancestral_states_mppa(tree, feature, states):
@@ -413,11 +418,11 @@ def choose_ancestral_states_mppa(tree, feature, states):
     :return: void, add ancestral states as the `feature` feature to each node
     (as a list if multiple states are possible or as a string if only one state is chosen)
     """
-    mp_feature = get_personalized_feature_name(feature, MARGINAL_PROBS)
+    lh_feature = get_personalized_feature_name(feature, LH)
     n = len(states)
     for node in tree.traverse():
-        marginal_probs = getattr(node, mp_feature)
-        sorted_marginal_probs = np.sort(marginal_probs)
+        marginal_likelihoods = getattr(node, lh_feature)
+        sorted_marginal_probs = np.sort(marginal_likelihoods / marginal_likelihoods.sum())
         best_k = n
         best_correstion = np.inf
         for k in range(1, n):
@@ -427,7 +432,7 @@ def choose_ancestral_states_mppa(tree, feature, states):
                 best_correstion = correction
                 best_k = k
 
-        possible_states = states[sorted(range(n), key=lambda _: -marginal_probs[_])[:best_k]].tolist()
+        possible_states = states[sorted(range(n), key=lambda _: -marginal_likelihoods[_])[:best_k]].tolist()
         node.add_feature(feature, possible_states[0] if best_k == 1 else possible_states)
 
 
@@ -440,10 +445,10 @@ def choose_ancestral_states_map(tree, feature, states):
     :param states: numpy.array of possible character states in order corresponding to the probabilities array
     :return: void, add ancestral states as the `feature` feature to each node
     """
-    mp_feature = get_personalized_feature_name(feature, MARGINAL_PROBS)
+    lh_feature = get_personalized_feature_name(feature, LH)
     for node in tree.traverse():
-        marginal_probs = getattr(node, mp_feature)
-        best_state = states[marginal_probs.argmax()]
+        marginal_likelihoods = getattr(node, lh_feature)
+        best_state = states[marginal_likelihoods.argmax()]
         node.add_feature(feature, best_state)
 
 
@@ -510,19 +515,21 @@ def ml_acr(tree, feature, prediction_method, model, states, avg_br_len):
         calculate_top_down_likelihood(tree, feature, frequencies, sf)
         unalter_zero_tip_likelihoods(tree, feature, state2index)
         calculate_marginal_likelihoods(tree, feature, frequencies)
-        convert_likelihoods_to_probabilities(tree, feature)
+        marginal_df = convert_likelihoods_to_probabilities(tree, feature, states)
         if MPPA == prediction_method:
             logging.info('Choosing MPPA ancestral states for {}.\n'.format(feature))
             choose_ancestral_states_mppa(tree, feature, states)
         elif MAP == prediction_method:
             logging.info('Choosing MAP ancestral states for {}.\n'.format(feature))
             choose_ancestral_states_map(tree, feature, states)
+        return ACRMLMarginalResult(likelihood=likelihood, frequencies=frequencies, sf=sf / avg_br_len,
+                                   method=prediction_method, model=model, character=feature, states=states,
+                                   marginal_probabilities=marginal_df)
     # joint
     else:
         get_bottom_up_likelihood(tree, feature, frequencies, sf, False)
         unalter_zero_tip_joint_states(tree, feature, state2index)
         logging.info('Choosing joint ancestral states for {}.\n'.format(feature))
         choose_ancestral_states_joint(tree, feature, states, frequencies)
-    return ACRMLResult(likelihood=likelihood, frequencies=frequencies, sf=sf / avg_br_len,
-                       method=prediction_method, model=model, character=feature, states=states)
-
+    return ACRMLJointResult(likelihood=likelihood, frequencies=frequencies, sf=sf / avg_br_len,
+                            method=prediction_method, model=model, character=feature, states=states)

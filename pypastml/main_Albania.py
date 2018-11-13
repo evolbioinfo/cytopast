@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 from cytopast import read_tree
-from pypastml.acr import acr
+from pypastml.acr import acr, COPY
 from pypastml.ml import MPPA, MAP, JOINT, JC, F81, EFT
 from pypastml.parsimony import DOWNPASS, ACCTRAN, DELTRAN
 
@@ -25,6 +25,9 @@ if __name__ == '__main__':
     # acr(read_tree(TREE_NWK), df[[column]], html=HTML.format(method, model),
     #     html_compressed=HTML_MAP.format(method, model),
     #     prediction_method=method, model=model)
+
+    acr(read_tree(TREE_NWK), df[[column]], html=HTML.format('initial', ''), html_compressed=HTML_MAP.format('initial', ''),
+        prediction_method=COPY)
 
     for method in (MPPA, MAP, JOINT):
         for model in (JC, F81, EFT):

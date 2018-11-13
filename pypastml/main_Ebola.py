@@ -4,7 +4,8 @@ import os
 import pandas as pd
 
 from cytopast import read_tree
-from pypastml import acr, JOINT, MPPA, MAP, JC, F81, EFT
+from pypastml.acr import acr
+from pypastml.ml import MPPA, F81
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'examples', 'Ebola', 'data')
 TREE_NWK = os.path.join(DATA_DIR, 'Makona_1610_cds_ig.MCC.tree.nwk')

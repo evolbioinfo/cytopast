@@ -58,3 +58,35 @@ class ACRParameterOptimisationTestJC(unittest.TestCase):
                 self.assertAlmostEqual(node_loglh, parent_loglh, places=2,
                                        msg='Likelihoods of {} and {} were supposed to be the same.'
                                        .format(node.name, node.up.name))
+
+    def test_marginal_probs_root(self):
+        expected_values = {'Africa': 0.819, 'Albania': 0.020, 'EastEurope': 0.045,
+                           'Greece': 0.020, 'WestEurope': 0.095}
+        node_name = 'ROOT'
+        mps = self.acr_result.marginal_probabilities
+        for loc, expected_value in expected_values.items():
+            value = mps.loc[node_name, loc]
+            self.assertAlmostEqual(value, expected_value, places=3,
+                                   msg='{}: Marginal probability of {} was supposed to be the {:.3f}, got {:3f}'
+                                   .format(node_name, loc, expected_value, value))
+
+    def test_marginal_probs_internal_node(self):
+        expected_values = {'Africa': 0.686, 'Albania': 0.002, 'EastEurope': 0.003,
+                           'Greece': 0.002, 'WestEurope': 0.307}
+        node_name = 'node_4'
+        mps = self.acr_result.marginal_probabilities
+        for loc, expected_value in expected_values.items():
+            value = mps.loc[node_name, loc]
+            self.assertAlmostEqual(value, expected_value, places=3,
+                                   msg='{}: Marginal probability of {} was supposed to be the {:.3f}, got {:3f}'
+                                   .format(node_name, loc, expected_value, value))
+
+    def test_marginal_probs_tip(self):
+        expected_values = {'Africa': 0, 'Albania': 1, 'EastEurope': 0, 'Greece': 0, 'WestEurope': 0}
+        node_name = '02ALAY1660'
+        mps = self.acr_result.marginal_probabilities
+        for loc, expected_value in expected_values.items():
+            value = mps.loc[node_name, loc]
+            self.assertAlmostEqual(value, expected_value, places=3,
+                                   msg='{}: Marginal probability of {} was supposed to be the {:.3f}, got {:3f}'
+                                   .format(node_name, loc, expected_value, value))
