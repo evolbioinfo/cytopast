@@ -22,7 +22,5 @@ if __name__ == '__main__':
 
     method = MPPA
     model = F81
-    acr(read_tree(TREE_NWK), df, html=HTML.format(column, method, model),
-        html_compressed=HTML_MAP.format(column, method, model),
-        prediction_method=method, model=model)
+    acr(read_tree(TREE_NWK), df, prediction_method=method, model=model)
 

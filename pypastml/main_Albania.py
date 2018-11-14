@@ -26,14 +26,11 @@ if __name__ == '__main__':
     #     html_compressed=HTML_MAP.format(method, model),
     #     prediction_method=method, model=model)
 
-    acr(read_tree(TREE_NWK), df[[column]], html=HTML.format('initial', ''), html_compressed=HTML_MAP.format('initial', ''),
-        prediction_method=COPY)
+    acr(read_tree(TREE_NWK), df[[column]], prediction_method=COPY)
 
     for method in (MPPA, MAP, JOINT):
         for model in (JC, F81, EFT):
-            acr(read_tree(TREE_NWK), df[[column]], html=HTML.format(method, model), html_compressed=HTML_MAP.format(method, model),
-                prediction_method=method, model=model)
+            acr(read_tree(TREE_NWK), df[[column]], prediction_method=method, model=model)
 
     for method in (DOWNPASS, ACCTRAN, DELTRAN):
-            acr(read_tree(TREE_NWK), df[[column]], html=HTML.format(method, ''), html_compressed=HTML_MAP.format(method, ''),
-                prediction_method=method, model=None)
+            acr(read_tree(TREE_NWK), df[[column]], prediction_method=method, model=None)

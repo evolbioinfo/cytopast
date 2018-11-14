@@ -1,9 +1,11 @@
 import os
 import unittest
+from collections import Counter
 
 import pandas as pd
+import numpy as np
 
-from cytopast import read_tree
+from cytopast import read_tree, collapse_zero_branches
 from pypastml.acr import acr
 from pypastml.ml import JOINT, EFT
 
@@ -16,37 +18,38 @@ class ACRStateTestJointEFT(unittest.TestCase):
 
     def setUp(self):
         self.feature = 'Country'
-        df = pd.read_csv(STATES_INPUT, index_col=0, header=0)[[self.feature]]
+        self.df = pd.read_csv(STATES_INPUT, index_col=0, header=0)[[self.feature]]
         self.tree = read_tree(TREE_NWK)
-        acr(self.tree, df, prediction_method=JOINT, model=EFT)
+        collapse_zero_branches(self.tree)
+        acr(self.tree, self.df, prediction_method=JOINT, model=EFT)
 
-    def test_num_African_nodes(self):
-        num = 0
-        for node in self.tree.traverse():
-            if 'Africa' == getattr(node, self.feature):
-                num += 1
-        self.assertEqual(115, num, msg='Was supposed to have {} African nodes, got {}.'.format(115, num))
+    def test_collapsed_vs_full(self):
+        tree = read_tree(TREE_NWK)
+        acr(tree, self.df, prediction_method=JOINT, model=EFT)
 
-    def test_num_Albanian_nodes(self):
-        num = 0
-        for node in self.tree.traverse():
-            if 'Albania' == getattr(node, self.feature):
-                num += 1
-        self.assertEqual(50, num, msg='Was supposed to have {} Albanian nodes, got {}.'.format(50, num))
+        def get_state(node):
+            state = getattr(node, self.feature)
+            return state if not isinstance(state, list) else ', '.join(sorted(state))
 
-    def test_num_Greek_nodes(self):
-        num = 0
-        for node in self.tree.traverse():
-            if 'Greece' == getattr(node, self.feature):
-                num += 1
-        self.assertEqual(66, num, msg='Was supposed to have {} Greek nodes, got {}.'.format(66, num))
+        df_full = pd.DataFrame.from_dict({node.name: get_state(node) for node in tree.traverse()},
+                                         orient='index', columns=['full'])
+        df_collapsed = pd.DataFrame.from_dict({node.name: get_state(node) for node in self.tree.traverse()},
+                                              orient='index', columns=['collapsed'])
+        df = df_collapsed.join(df_full, how='left')
+        self.assertTrue(np.all((df['collapsed'] == df['full'])),
+                        msg='All the node states of the collapsed tree should be the same as of the full one.')
 
-    def test_num_WE_nodes(self):
-        num = 0
+    def test_num_nodes(self):
+        state2num = Counter()
         for node in self.tree.traverse():
-            if 'WestEurope' == getattr(node, self.feature):
-                num += 1
-        self.assertEqual(30, num, msg='Was supposed to have {} West European nodes, got {}.'.format(30, num))
+            state = getattr(node, self.feature)
+            if isinstance(state, list):
+                state2num['unresolved'] += 1
+            else:
+                state2num[state] += 1
+        expected_state2num = {'Africa': 115, 'Albania': 50, 'Greece': 66, 'WestEurope': 30, 'EastEurope': 16}
+        self.assertDictEqual(expected_state2num, state2num, msg='Was supposed to have {} as states counts, got {}.'
+                             .format(expected_state2num, state2num))
 
     def test_state_root(self):
         expected_state = 'Africa'

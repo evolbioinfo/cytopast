@@ -1,9 +1,10 @@
 import os
 import unittest
+from collections import Counter
 
 import pandas as pd
 
-from cytopast import read_tree
+from cytopast import read_tree, collapse_zero_branches
 from pypastml.acr import acr
 from pypastml.parsimony import DELTRAN
 
@@ -18,11 +19,24 @@ class ACRStateTestDeltran(unittest.TestCase):
         self.feature = 'Country'
         df = pd.read_csv(STATES_INPUT, index_col=0, header=0)[[self.feature]]
         self.tree = read_tree(TREE_NWK)
+        collapse_zero_branches(self.tree)
         self.acr_result = acr(self.tree, df, prediction_method=DELTRAN)[0]
 
     def test_num_steps(self):
         self.assertEqual(32, self.acr_result.steps,
                          msg='Was supposed to have {} parsimonious steps, got {}.'.format(32, self.acr_result.steps))
+
+    def test_num_nodes(self):
+        state2num = Counter()
+        for node in self.tree.traverse():
+            state = getattr(node, self.feature)
+            if isinstance(state, list):
+                state2num['unresolved'] += 1
+            else:
+                state2num[state] += 1
+        expected_state2num = {'unresolved': 1, 'Africa': 117, 'Albania': 50, 'Greece': 65, 'WestEurope': 28, 'EastEurope': 16}
+        self.assertDictEqual(expected_state2num, state2num, msg='Was supposed to have {} as states counts, got {}.'
+                             .format(expected_state2num, state2num))
 
     def test_state_root(self):
         expected_state = 'Africa'
