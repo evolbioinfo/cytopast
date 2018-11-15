@@ -17,10 +17,9 @@ PASTML_TIP_STATES_CSV = 'input_tip_states.state_{state}.csv'
 PASTML_ML_PARAMS_CSV = 'params.state_{state}.method_{method}.model_{model}.csv'
 PASTML_MP_PARAMS_CSV = 'params.state_{state}.method_{method}.csv'
 PASTML_MARGINAL_PROBS_CSV = 'marginal_probabilities.state_{state}.model_{model}.csv'
-PASTML_PARAMS_CSV_INPUT = 'input_params.state_{state}.method_{method}.model_{model}.csv'
 
 
-def get_pastml_parameter_file(method, model, column, is_input=False):
+def get_pastml_parameter_file(method, model, column):
     """
     Get the filename where the PastML parameters are saved
     (for non-ML methods and input parameters will be None, as they have no parameters).
@@ -28,13 +27,10 @@ def get_pastml_parameter_file(method, model, column, is_input=False):
     :param method: str, the ancestral state prediction method used by PASTML.
     :param model: str, the state evolution model used by PASTML.
     :param column: str, the column for which ancestral states are reconstructed with PASTML.
-    :param is_input: bool, whether this is an input or an output file for PASTML.
     :return: str, filename or None for non-ML methods
     """
     ml = is_ml(method)
-    if not ml and is_input:
-        return None
-    template = PASTML_PARAMS_CSV_INPUT if is_input else (PASTML_ML_PARAMS_CSV if ml else PASTML_MP_PARAMS_CSV)
+    template = PASTML_ML_PARAMS_CSV if ml else PASTML_MP_PARAMS_CSV
     return template.format(state=col_name2cat(column), method=method, model=model)
 
 
@@ -97,59 +93,3 @@ def get_pastml_marginal_prob_file(method, model, column):
     if not is_marginal(method):
         return None
     return PASTML_MARGINAL_PROBS_CSV.format(state=col_name2cat(column), model=model)
-
-
-def parse_parameters(params, unique_states, param_file):
-    if isinstance(params, dict):
-        param_df = pd.Series(data=list(params.values()), index=params.keys())
-        param_df = param_df[np.in1d(param_df.index, unique_states + ['epsilon', 'scaling factor'])]
-        freq_df = param_df[np.in1d(param_df.index, unique_states)]
-        if len(freq_df):
-            try:
-                freq_df = freq_df.astype(np.float)
-            except:
-                logging.error('Specified frequencies ({}) are not float,'
-                              'ignoring them.'.format(freq_df))
-                param_df = param_df[np.in1d(param_df.index, ['epsilon', 'scaling factor'])]
-            if len(freq_df) != len(unique_states):
-                logging.error('Frequency parameters are specified ({}), but not for all of the states ({}), '
-                              'ignoring them.'.format(freq_df.columns, unique_states))
-                param_df = param_df[np.in1d(param_df.index, ['epsilon', 'scaling factor'])]
-            elif sum(freq_df) != 1:
-                logging.error('Specified frequencies ({}) do not sum up to one,'
-                              'ignoring them.'.format(freq_df))
-                param_df = param_df[np.in1d(param_df.index, ['epsilon', 'scaling factor'])]
-            elif any(freq_df < 0):
-                logging.error('Specified frequencies ({}) must not be negative,'
-                              'ignoring them.'.format(freq_df))
-                param_df = param_df[np.in1d(param_df.index, ['epsilon', 'scaling factor'])]
-        if 'epsilon' in param_df.index:
-            try:
-                epsilon = float(param_df['epsilon'])
-                if epsilon < 0:
-                    logging.error('Epsilon ({}) cannot be negative, ignoring it.'.format(param_df['epsilon']))
-                    param_df = param_df[np.in1d(param_df.index, ['epsilon'])]
-            except:
-                logging.error('Epsilon ({}) is not float, ignoring it.'.format(param_df['epsilon']))
-                param_df = param_df[np.in1d(param_df.index, ['epsilon'])]
-        if 'scaling factor' in param_df.index:
-            try:
-                epsilon = float(param_df['scaling factor'])
-                if epsilon < 0:
-                    logging.error(
-                        'Scaling factor ({}) cannot be negative, ignoring it.'.format(param_df['scaling factor']))
-                    param_df = param_df[np.in1d(param_df.index, ['scaling factor'])]
-            except:
-                logging.error('Scaling factor ({}) is not float, ignoring it.'.format(param_df['scaling factor']))
-                param_df = param_df[np.in1d(param_df.index, ['scaling factor'])]
-        if len(param_df):
-            param_df.to_csv(param_file)
-    elif isinstance(params, str):
-        if not os.path.exists(params):
-            raise ValueError('You have specified some parameters ({}) but such a file does not exist!'
-                             .format(params))
-        param_file = params
-    else:
-        raise ValueError('Parameters must be specified either as a dict or as a path to a csv file, not as {}!'
-                         .format(type(params)))
-    return param_file

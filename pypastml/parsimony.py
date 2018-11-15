@@ -1,8 +1,9 @@
 import logging
-from collections import Counter, namedtuple, defaultdict
+from collections import namedtuple
 
-from pypastml import get_personalized_feature_name
+import numpy as np
 
+from pypastml import get_personalized_feature_name, ALLOWED_STATES
 
 DOWNPASS = 'downpass'
 ACCTRAN = 'AccTran'
@@ -34,27 +35,6 @@ def initialise_tip_parsimonious_states(tree, feature, states):
     :return: void, adds the get_personalised_feature_name(feature, BU_PARS) feature to tree tips.
     """
     ps_feature = get_personalized_feature_name(feature, BU_PARS_STATES)
-
-    # n = len(state2index)
-    # mask_array_len = int(np.ceil(n / 64))
-    # # tips state arrays won't be modified so we might as well just share them
-    # all_ones = np.ones(mask_array_len, np.int64) * (~0)
-    # num_states_in_last_int = n % 64
-    # if num_states_in_last_int:
-    #     all_ones[-1] = (1 << num_states_in_last_int) - 1
-    #
-    # state2array = {}
-    # for state, index in state2index.items():
-    #     state_array = np.zeros(mask_array_len, np.int64)
-    #     state_array[index // 64] |= (1 << (index % 64))
-    #     state2array[state] = state_array
-    # state2array[None] = all_ones
-    # state2array[''] = all_ones
-    #
-    # for tip in tree:
-    #     tip.add_feature(ps_feature, state2array[getattr(tip, feature, '')])
-
-    # tips state arrays won't be modified so we might as well just share them
     all_states = set(states)
 
     state2array = {state: {state} for state in states}
@@ -65,17 +45,17 @@ def initialise_tip_parsimonious_states(tree, feature, states):
         tip.add_feature(ps_feature, state2array[getattr(tip, feature, '')])
 
 
-def get_most_common_states(state_iterable):
+def get_most_common_states(state_list):
     """
     Gets the set of most common states among the state sets contained in the iterable argument
-    :param state_iterable: iterable of state sets
+    :param state_list: list of allowed state arrays (that have 1 if the corresponding state is allowed else 0)
     :return: set of most common states
     """
-    state_counter = Counter()
-    for states in state_iterable:
-        state_counter.update(states)
-    max_count = state_counter.most_common(1)[0][1]
-    return {state for (state, count) in state_counter.items() if count == max_count}
+    allowed_states = np.sum(state_list, axis=0)
+    most_common_count = allowed_states.max()
+    allowed_states[allowed_states < most_common_count] = 0
+    allowed_states[allowed_states == most_common_count] = 1
+    return allowed_states
 
 
 def uppass(tree, feature):
@@ -100,9 +80,12 @@ def uppass(tree, feature):
     """
 
     ps_feature = get_personalized_feature_name(feature, BU_PARS_STATES)
+    allowed_states_feature = get_personalized_feature_name(feature, ALLOWED_STATES)
 
     for node in tree.traverse('postorder'):
-        if not node.is_leaf():
+        if node.is_leaf():
+            node.add_feature(ps_feature, getattr(node, allowed_states_feature))
+        else:
             node.add_feature(ps_feature, get_most_common_states(getattr(child, ps_feature) for child in node.children))
 
 
@@ -123,11 +106,11 @@ def acctran(tree, feature):
 
     :param tree: ete3.Tree, the tree of interest
     :param feature: str, character for which the parsimonious states are reconstructed
-    :return: void, adds get_personalized_feature_name(feature, PARS_STATES) feature to the tree nodes
+    :return: void, adds get_personalized_feature_name(feature, ALLOWED_STATES) feature to the tree nodes
     """
 
     ps_feature_down = get_personalized_feature_name(feature, BU_PARS_STATES)
-    ps_feature = get_personalized_feature_name(feature, PARS_STATES)
+    ps_feature = get_personalized_feature_name(feature, ALLOWED_STATES)
 
     for node in tree.traverse('preorder'):
         if node.is_root():
@@ -136,7 +119,7 @@ def acctran(tree, feature):
         for child in node.children:
             child_states = getattr(child, ps_feature_down)
             state_intersection = node_states & child_states
-            child.add_feature(ps_feature, state_intersection if state_intersection else child_states)
+            child.add_feature(ps_feature, state_intersection if np.any(state_intersection) else child_states)
         node.del_feature(ps_feature_down)
 
 
@@ -161,16 +144,16 @@ def downpass(tree, feature, states):
 
     :param tree: ete3.Tree, the tree of interest
     :param feature: str, character for which the parsimonious states are reconstructed
-    :return: void, adds get_personalized_feature_name(feature, PARS_STATES) feature to the tree nodes
+    :return: void, adds get_personalized_feature_name(feature, ALLOWED_STATES) feature to the tree nodes
     """
 
     ps_feature_down = get_personalized_feature_name(feature, BU_PARS_STATES)
     ps_feature_up = get_personalized_feature_name(feature, TD_PARS_STATES)
-    ps_feature = get_personalized_feature_name(feature, PARS_STATES)
+    ps_feature = get_personalized_feature_name(feature, ALLOWED_STATES)
 
     for node in tree.traverse('preorder'):
         if node.is_root():
-            node.add_feature(ps_feature_up, set(states))
+            node.add_feature(ps_feature_up, np.ones(len(states), dtype=np.int))
         else:
             node.add_feature(ps_feature_up,
                              get_most_common_states([getattr(node.up, ps_feature_up)]
@@ -181,7 +164,7 @@ def downpass(tree, feature, states):
                              get_most_common_states([getattr(node, ps_feature_up)]
                                                     + [getattr(child, ps_feature_down) for child in node.children]))
         # try to resolve unresolved tips using the up information if possible
-        elif len(getattr(node, ps_feature_down)) > 1:
+        elif np.sum(getattr(node, ps_feature_down)) > 1:
             node.add_feature(ps_feature,
                              get_most_common_states([getattr(node, ps_feature_up), getattr(node, ps_feature_down)]))
         else:
@@ -211,14 +194,14 @@ def deltran(tree, feature):
     :param feature: str, character for which the parsimonious states are reconstructed
     :return: void, modifies get_personalized_feature_name(feature, PARS_STATES) feature of the tree nodes
     """
-    ps_feature = get_personalized_feature_name(feature, PARS_STATES)
+    ps_feature = get_personalized_feature_name(feature, ALLOWED_STATES)
 
     for node in tree.traverse('preorder'):
         if not node.is_root():
             node_states = getattr(node, ps_feature)
             parent_states = getattr(node.up, ps_feature)
             state_intersection = node_states & parent_states
-            if state_intersection:
+            if np.any(state_intersection):
                 node.add_feature(ps_feature, state_intersection)
 
 
@@ -236,7 +219,6 @@ def parsimonious_acr(tree, feature, prediction_method, states):
     :param feature: str, character for which the parsimonious states are reconstructed
     :return: void, add parsimonious states as the `feature` feature to each node
     """
-    initialise_tip_parsimonious_states(tree, feature, states)
     uppass(tree, feature)
     if ACCTRAN == prediction_method:
         acctran(tree, feature)
@@ -246,48 +228,24 @@ def parsimonious_acr(tree, feature, prediction_method, states):
             deltran(tree, feature)
     num_steps = get_num_parsimonious_steps(tree, feature)
     logging.info("Parsimonious reconstruction for {} requires {} state changes.\n".format(feature, num_steps))
-    choose_parsimonious_states(tree, feature)
-
     return ACRParsimoniousResult(steps=num_steps, character=feature, states=states, method=prediction_method)
 
 
-def choose_parsimonious_states(tree, feature):
-    """
-    Converts the content of the get_personalized_feature_name(feature, PARS_STATES) node feature to the predicted states
-    and stores them in the `feature` feature to each node.
-    The get_personalized_feature_name(feature, PARS_STATES) is deleted.
-
-    :param feature: str, character for which the parsimonious states are reconstructed
-    :param tree: ete3.Tree, the tree of interest
-    :return: void, add parsimonious states as the `feature` feature to each node
-    """
-    ps_feature = get_personalized_feature_name(feature, PARS_STATES)
-    for node in tree.traverse():
-        states = getattr(node, ps_feature)
-        node.add_feature(feature, next(iter(states)) if len(states) == 1 else list(states))
-        node.del_feature(ps_feature)
-
-
 def get_num_parsimonious_steps(tree, feature):
-
-    ps_feature = get_personalized_feature_name(feature, PARS_STATES)
+    ps_feature = get_personalized_feature_name(feature, ALLOWED_STATES)
     ps_feature_num = get_personalized_feature_name(feature, PARS_STATE2NUM)
 
     for node in tree.traverse('postorder'):
-        if node.is_leaf():
-            node.add_feature(ps_feature_num, {state: 0 for state in getattr(node, ps_feature)})
-        else:
-            state2num = {}
-            for state in getattr(node, ps_feature):
-                num = 0
-                for child in node.children:
-                    child_state2num = getattr(child, ps_feature_num)
-                    num += min(((0 if state == child_state else 1) + child_num)
-                               for (child_state, child_num) in child_state2num.items())
-                state2num[state] = num
-            node.add_feature(ps_feature_num, state2num)
-            for child in node.children:
-                child.del_feature(ps_feature_num)
+        states = getattr(node, ps_feature)
+        nums = states.copy()
+        # number of changes cannot be larger than the number of branches in the tree
+        nums[states == 0] = 2 * len(tree)
+        nums[states == 1] = 0
+        node.add_feature(ps_feature_num, nums)
+        for child in node.children:
+            child_nums = getattr(child, ps_feature_num)
+            nums += np.min([child_nums, np.ones(len(child_nums), dtype=np.int) * child_nums.min() + 1], axis=0)
+            child.del_feature(ps_feature_num)
     state2num = getattr(tree, ps_feature_num)
     tree.del_feature(ps_feature_num)
-    return min(state2num.values())
+    return state2num.min()

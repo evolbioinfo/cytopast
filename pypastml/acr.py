@@ -9,7 +9,7 @@ import pandas as pd
 from cytopast import collapse_zero_branches, name_tree, REASONABLE_NUMBER_OF_TIPS, read_tree, date_tips, col_name2cat
 from cytopast.pastml_analyser import get_named_tree_file, get_pastml_parameter_file, \
     get_pastml_marginal_prob_file, get_combined_ancestral_state_file
-from pypastml import rescale_tree, value2list
+from pypastml import rescale_tree, value2list, initialize_allowed_states, get_personalized_feature_name, ALLOWED_STATES
 from pypastml.annotation import preannotate_tree, get_tree_stats
 from pypastml.ml import MPPA, ml_acr, F81, is_ml, MAP, JOINT, is_marginal, JC, EFT
 from pypastml.parsimony import parsimonious_acr, is_parsimonious, ACCTRAN, DELTRAN, DOWNPASS
@@ -20,25 +20,96 @@ COPY = 'copy'
 ACRCopyResult = namedtuple('ACRCopyResult', field_names=['character', 'states', 'method'])
 
 
-def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_method=MPPA, model=None):
+def parse_parameters(params, states):
+    frequencies, sf = None, None
+    if not isinstance(params, str) and not isinstance(params, dict):
+        raise ValueError('Parameters must be specified either as a dict or as a path to a csv file, not as {}!'
+                         .format(type(params)))
+    if isinstance(params, str):
+        if not os.path.exists(params):
+            raise ValueError('You have specified some parameters ({}) but such a file does not exist!'
+                             .format(params))
+        try:
+            param_dict = pd.read_csv(params, header=0, index_col=0)
+            param_dict = param_dict.to_dict()[param_dict.columns[0]]
+            params = param_dict
+        except:
+            logging.info('The specified parameter file {} is malformatted, '
+                         'should be a csv file with parameter name in the first column and value in the second column. '
+                         'Ignoring these parameters.'.format(params))
+            return frequencies, sf
+    frequencies_specified = set(states) & set(params.keys())
+    if frequencies_specified:
+        if len(frequencies_specified) < len(states):
+            logging.error('Frequency parameters are specified ({}), but not for all of the states ({}), '
+                          'ignoring them.'.format(', '.join(sorted(frequencies_specified)), ', '.join(states)))
+        else:
+            frequencies = np.array([params[state] for state in states])
+            try:
+                frequencies = frequencies.astype(np.float64)
+                if frequencies.sum() != 1:
+                    logging.error('Specified frequencies ({}) do not sum up to one,'
+                                  'ignoring them.'.format(frequencies))
+                    frequencies = None
+                elif np.any(frequencies < 0):
+                    logging.error('Some of the specified frequencies ({}) are negative,'
+                                  'ignoring them.'.format(frequencies))
+                    frequencies = None
+            except:
+                logging.error('Specified frequencies ({}) must not be negative, ignoring them.'.format(frequencies))
+                frequencies = None
+    if 'scaling factor' in params:
+        sf = params['scaling factor']
+        try:
+            sf = np.float64(sf)
+            if sf <= 0:
+                logging.error(
+                    'Scaling factor ({}) cannot be negative, ignoring it.'.format(sf))
+                sf = None
+        except:
+            logging.error('Scaling factor ({}) is not float, ignoring it.'.format(sf))
+            sf = None
+    return frequencies, sf
+
+
+def reconstruct_ancestral_states(tree, feature, states, avg_br_len, prediction_method=MPPA, model=None, params=None):
     logging.info('ACR settings for {}:\n\tMethod:\t{}{}.\n'.format(feature, prediction_method,
                                                                    '\n\tModel:\t{}'.format(model)
                                                                    if model and is_ml(prediction_method) else ''))
-    if is_ml(prediction_method):
-        return ml_acr(tree, feature, prediction_method, model, states, avg_br_len)
-
-    if is_parsimonious(prediction_method):
-        return parsimonious_acr(tree, feature, prediction_method, states)
 
     if COPY == prediction_method:
         return ACRCopyResult(character=feature, states=states, method=prediction_method)
 
-    raise ValueError('Method {} is unknown, should be one of ML ({}, {}, {}), one of MP ({}, {}, {}) or {}'
-                     .format(prediction_method, MPPA, MAP, JOINT, ACCTRAN, DELTRAN, DOWNPASS, COPY))
+    initialize_allowed_states(tree, feature, states)
+
+    if is_ml(prediction_method):
+        freqs, sf = None, None
+        if params is not None:
+            freqs, sf = parse_parameters(params, states)
+            if sf:
+                sf *= avg_br_len
+        res = ml_acr(tree, feature, prediction_method, model, states, avg_br_len, freqs, sf)
+    elif is_parsimonious(prediction_method):
+        res = parsimonious_acr(tree, feature, prediction_method, states)
+    else:
+        raise ValueError('Method {} is unknown, should be one of ML ({}, {}, {}), one of MP ({}, {}, {}) or {}'
+                         .format(prediction_method, MPPA, MAP, JOINT, ACCTRAN, DELTRAN, DOWNPASS, COPY))
+
+    allowed_states_feature = get_personalized_feature_name(feature, ALLOWED_STATES)
+    for node in tree.traverse():
+        selected_states = states[getattr(node, allowed_states_feature).astype(bool)].tolist()
+        node.add_feature(feature, selected_states[0] if len(selected_states) == 1 else selected_states)
+
+    return res
 
 
-def acr(tree, df, prediction_method=MPPA, model=F81):
+def acr(tree, df, prediction_method=MPPA, model=F81, column2parameters=None):
     columns = preannotate_tree(df, tree)
+    if column2parameters is not None:
+        column2parameters = {col_name2cat(col): params for (col, params) in column2parameters.items()}
+    else:
+        column2parameters = {}
+
     avg_br_len = get_tree_stats(tree)
 
     logging.info('\n=============RECONSTRUCTING ANCESTRAL STATES=============\n')
@@ -54,7 +125,8 @@ def acr(tree, df, prediction_method=MPPA, model=F81):
         acr_results = \
             pool.map(func=_work, iterable=((tree, column, np.sort([_ for _ in df[column].unique()
                                                                    if pd.notnull(_) and _ != '']),
-                                            avg_br_len, method, model)
+                                            avg_br_len, method, model,
+                                            column2parameters[column] if column in column2parameters else None)
                                            for (column, method, model) in zip(columns, prediction_methods, models)))
 
     rescale_tree(tree, avg_br_len)
@@ -97,8 +169,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     :param verbose: bool, print information on the progress of the analysis.
     :param column2parameters: dict, an optional way to fix some parameters, must be in a form {column: {param: value}},
     where param can be a state (then the value should specify its frequency between 0 and 1),
-    "scaling factor" (then the value should be the scaling factor for three branches, e.g. set to 1 to keep the original branches),
-    or "epsilon" (the values specifies a min tip branch length to use for smoothing)
+    or "scaling factor" (then the value should be the scaling factor for three branches, e.g. set to 1 to keep the original branches).
     :param work_dir: str, path to the folder where pastml should put its files (e.g. estimated parameters, etc.),
     will be created if needed (by default is a temporary folder that gets deleted once the analysis is finished).
     :return: void
@@ -179,7 +250,7 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
                          'PASTML cannot infer ancestral states for a tree with too many tip states.'
                          .format(percentage_unique.idxmax(), 100 * max_unique_percentage))
 
-    acr_results = acr(root, df, prediction_method=prediction_method, model=model)
+    acr_results = acr(root, df, prediction_method=prediction_method, model=model, column2parameters=column2parameters)
 
     if work_dir and not out_data:
         out_data = os.path.join(work_dir, get_combined_ancestral_state_file(method=prediction_method, model=model,
