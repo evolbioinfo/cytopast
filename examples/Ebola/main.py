@@ -16,7 +16,7 @@ if '__main__' == __name__:
                                       get_pastml_parameter_file(MPPA, model, loc))
         for method in (MPPA, JOINT, MAP):
             work_dir = os.path.join(DATA_DIR, 'pastml_files', 'pastml_{}_{}'.format(method, model))
-            pastml_pipeline(data=STATES_CSV, tree=TREE_NWK, data_sep=',', id_index=1,
+            pastml_pipeline(data=STATES_CSV, tree=TREE_NWK, data_sep=',',
                             html_compressed=os.path.join(DATA_DIR, 'maps', 'map_{}_{}.html'.format(method, model)),
                             html=os.path.join(DATA_DIR, 'trees', 'tree_{}_{}.html'.format(method, model)),
                             prediction_method=method, model=model,
