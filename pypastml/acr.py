@@ -146,14 +146,13 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     Applies PASTML to the given tree with the specified states and visualizes the result (as html maps).
 
     :param date_column: str (optional), name of the data table column that contains tip dates.
-    (following pandas specification, by default is inferred).
     :param out_data: str, path to the output annotation file with the states inferred by PASTML.
     :param tree: str, path to the input tree in newick format.
     :param data: str, path to the annotation file in tab/csv format with the first row containing the column names.
     :param html_compressed: str, path where the output summary map visualisation file (html) will be created.
     :param html: str (optional), path where the output tree visualisation file (html) will be created.
     :param data_sep: char (optional, by default '\t'), the column separator for the data table.
-    By default is set to tab, i.e. for tab file. Set it to ',' if your file is csv.
+    By default is set to tab, i.e. for tab-delimited file. Set it to ',' if your file is csv.
     :param id_index: int (optional, by default is 0) the index of the column in the data table
     that contains the tree tip names, indices start from zero.
     :param columns: list of str (optional), names of the data table columns that contain states
@@ -163,15 +162,15 @@ def pastml_pipeline(tree, data, out_data=None, html_compressed=None, html=None, 
     it will be used by default.
     :param tip_size_threshold: int (optional, by default is 15), remove the tips of size less than threshold-th
     from the compressed map (set to 1e10 to keep all). The larger it is the less tips will be trimmed.
-    :param model: str (optional, default is pastml.F81), model to be used by PASTML.
-    :param prediction_method: str (optional, default is pastml.MARGINAL_APPROXIMATION),
-    ancestral state prediction method to be used by PASTML.
+    :param model: str (optional, default is F81), model to be used by PASTML.
+    :param prediction_method: str (optional, default is MPPA), ancestral state prediction method to be used by PASTML.
     :param verbose: bool, print information on the progress of the analysis.
     :param column2parameters: dict, an optional way to fix some parameters, must be in a form {column: {param: value}},
     where param can be a state (then the value should specify its frequency between 0 and 1),
-    or "scaling factor" (then the value should be the scaling factor for three branches, e.g. set to 1 to keep the original branches).
-    :param work_dir: str, path to the folder where pastml should put its files (e.g. estimated parameters, etc.),
-    will be created if needed (by default is a temporary folder that gets deleted once the analysis is finished).
+    or "scaling factor" (then the value should be the scaling factor for three branches,
+    e.g. set to 1 to keep the original branches).
+    :param work_dir: str, path to the folder where PASTML should put its files (e.g. estimated parameters, etc.).
+    If the specified folder does not exist, it will be created.
     :return: void
     """
     logging.basicConfig(level=logging.INFO if verbose else logging.ERROR,
@@ -328,13 +327,8 @@ def main():
                                        "indices start from zero (by default is set to 0).")
     annotation_group.add_argument('-c', '--columns', nargs='*',
                                   help="names of the data table columns that contain states "
-                                       "to be analysed with PASTML. "
-                                       "If neither columns nor copy_columns are specified, "
-                                       "then all columns will be considered for PASTMl analysis.",
-                                  type=str)
-    annotation_group.add_argument('--copy_columns', nargs='*',
-                                  help="names of the data table columns that contain states to be copied as-is, "
-                                       "without applying PASTML (the missing states will stay unresolved).",
+                                       "to be analysed with PASTML, or to be copied."
+                                       "If not specified, all columns will be considered.",
                                   type=str)
     annotation_group.add_argument('--date_column', required=False, default=None,
                                   help="name of the data table column that contains tip dates.",
@@ -353,27 +347,25 @@ def main():
     pastml_group.add_argument('--column2parameters', required=False, default=None, type=dict,
                               help='optional way to fix some parameters, must be in a form {column: {param: value}}, '
                                    'where param can be a state (then the value should specify its frequency between 0 and 1),'
-                                   '"scaling factor" (then the value should be the scaling factor for three branches, '
-                                   'e.g. set to 1 to keep the original branches), '
-                                   'or "epsilon" (the values specifies a min tip branch length to use for smoothing)')
+                                   'or "scaling factor" (then the value should be the scaling factor for tree branches, '
+                                   'e.g. set to 1 to keep the original branches).')
 
     vis_group = parser.add_argument_group('visualisation-related arguments')
     vis_group.add_argument('-n', '--name_column', type=str, default=None,
                            help="name of the data table column to be used for node names "
-                                "in the compressed map visualisation"
-                                "(must be one of those specified in columns or copy_columns if they are specified)."
+                                "in the compressed map visualisation (must be one of those specified in columns)."
                                 "If the data table contains only one column it will be used by default.")
     vis_group.add_argument('--tip_size_threshold', type=int, default=REASONABLE_NUMBER_OF_TIPS,
                            help="Remove the tips of size less than the threshold-th from the compressed map "
-                                "(set to 1e10 to keep all tips).  The larger it is the less tips will be trimmed.")
+                                "(set to 1e10 to keep all tips). The larger it is the less tips will be trimmed.")
 
     out_group = parser.add_argument_group('output-related arguments')
     out_group.add_argument('-o', '--out_data', required=False, type=str,
                            help="the output annotation file with the states inferred by PASTML.")
     pastml_group.add_argument('--work_dir', required=False, default=None, type=str,
                               help="(optional) str: path to the folder where pastml should put its files "
-                                   "(e.g. estimated parameters, etc.), will be created if needed "
-                                   "(by default is a temporary folder that gets deleted once the analysis is finished).")
+                                   "(e.g. estimated parameters, etc.). "
+                                   "If the specified folder does not exist, it will be created.")
     out_group.add_argument('-p', '--html_compressed', required=False, default=None, type=str,
                            help="the output summary map visualisation file (html).")
     out_group.add_argument('-l', '--html', required=False, default=None, type=str,
