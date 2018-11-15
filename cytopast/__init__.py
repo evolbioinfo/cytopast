@@ -4,7 +4,7 @@ from collections import defaultdict, Counter
 
 import numpy as np
 import pandas as pd
-from ete3 import Tree, TreeNode
+from ete3 import Tree
 
 DATE = 'date'
 
@@ -150,47 +150,6 @@ def remove_certain_leaves(tr, to_remove=lambda node: False):
                 grandparent.remove_child(parent)
                 grandparent.add_child(brother)
     return tr
-
-
-def pasml_annotations2cytoscape_annotation(cat2file, output, sep='\t'):
-    logging.info('Combining the data from different columns into {}'.format(output))
-
-    def get_state(name, df):
-        row = df.loc[name, :]
-        states = df.columns[row]
-        return None if len(states) != 1 else states[0]
-
-    cat2df = {cat: pd.read_table(data_path, sep=',', index_col=0, header=0).astype(bool) for (cat, data_path) in
-              cat2file.items()}
-    df = pd.DataFrame(index=next(iter(cat2df.values())).index, columns=cat2df.keys())
-    for cat, cat_df in cat2df.items():
-        cat_df.index = cat_df.index.map(str)
-        df[cat] = df.index.map(lambda name: get_state(name, cat_df))
-
-    if len(cat2df) == 1:
-        cat_df = next(iter(cat2df.values()))
-        rsuffix = 'category' if set(df.columns) & set(cat_df.columns) else ''
-        df = df.join(cat_df, rsuffix=rsuffix, lsuffix='')
-
-    df.to_csv(output, sep=sep, index_label='Node')
-
-
-def annotate_tree_with_cyto_metadata(tree, data_path, columns, sep='\t'):
-    df = pd.read_table(data_path, sep=sep, index_col=0, header=0)
-    df.index = df.index.map(str)
-    df.fillna('', inplace=True)
-    tree = read_tree(tree) if not isinstance(tree, TreeNode) else tree
-
-    for n in tree.traverse():
-        if len(columns) != 1:
-            n.add_features(**df.loc[n.name, :].to_dict())
-        else:
-            category = col_name2cat(columns[0])
-            data = df.loc[n.name, :]
-            n.add_features(**data[data != False].to_dict())
-            # In case category's value was also False (and therefore was not added), let's add it again
-            n.add_feature(category, data[category])
-    return tree, sorted(df.columns)
 
 
 def col_name2cat(column):

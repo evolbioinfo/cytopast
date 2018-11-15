@@ -7,7 +7,6 @@ from jinja2 import Environment, PackageLoader
 
 from cytopast import read_tree
 from cytopast.colour_generator import get_enough_colours
-from cytopast.pastml_analyser import quote
 
 ISO_EXISTS = False
 try:
@@ -56,10 +55,10 @@ def generate_map(data, country, location, tree, html, data_sep='\t', id_index=0)
     df = pd.read_table(data, sep=data_sep, header=0, index_col=id_index)
     if country not in df.columns:
         raise ValueError('The country column {} not found among the annotation columns: {}.'
-                         .format(country, quote(df.columns)))
+                         .format(country, df.columns))
     if location not in df.columns:
         raise ValueError('The location column {} not found among the annotation columns: {}.'
-                         .format(location, quote(df.columns)))
+                         .format(location, df.columns))
     df = df[np.in1d(df.index.astype(np.str), [_.name for _ in read_tree(tree)])]
     df.sort_values(by=[location], inplace=True, na_position='last')
     ddf = df.drop_duplicates(subset=[country], inplace=False, keep='first')

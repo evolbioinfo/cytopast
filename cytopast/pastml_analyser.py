@@ -1,8 +1,4 @@
-import logging
 import os
-
-import numpy as np
-import pandas as pd
 
 from cytopast import col_name2cat
 from pypastml.ml import is_ml, is_marginal

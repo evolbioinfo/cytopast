@@ -1,7 +1,7 @@
 import os
 
-from cytopast.pastml_analyser import pastml_pipeline, get_pastml_parameter_file
-from pastml import *
+from pypastml.acr import pastml_pipeline, get_pastml_parameter_file
+from pypastml.ml import MPPA, F81, JC, JOINT, MAP
 
 DATA_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
 TREE_NWK = os.path.join(DATA_DIR, 'Makona_1610_cds_ig.MCC.tree.nwk')
@@ -12,9 +12,9 @@ if '__main__' == __name__:
     loc = 'location'
     for model in (F81, JC):
         parameter_file = os.path.join(DATA_DIR, 'pastml_files',
-                                      'pastml_{}_{}'.format(MARGINAL_APPROXIMATION, model),
-                                      get_pastml_parameter_file(MARGINAL_APPROXIMATION, model, loc))
-        for method in (MARGINAL_APPROXIMATION, JOINT, MAX_POSTERIORI):
+                                      'pastml_{}_{}'.format(MPPA, model),
+                                      get_pastml_parameter_file(MPPA, model, loc))
+        for method in (MPPA, JOINT, MAP):
             work_dir = os.path.join(DATA_DIR, 'pastml_files', 'pastml_{}_{}'.format(method, model))
             pastml_pipeline(data=STATES_CSV, tree=TREE_NWK, data_sep=',', id_index=1,
                             html_compressed=os.path.join(DATA_DIR, 'maps', 'map_{}_{}.html'.format(method, model)),

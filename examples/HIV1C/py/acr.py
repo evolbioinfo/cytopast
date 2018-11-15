@@ -3,7 +3,7 @@ import tempfile
 from pastml import F81, MARGINAL_APPROXIMATION
 from shutil import copyfile, rmtree
 
-from cytopast.pastml_analyser import pastml_pipeline, get_pastml_parameter_file
+from pypastml.acr import pastml_pipeline, get_pastml_parameter_file
 
 if '__main__' == __name__:
     import argparse
